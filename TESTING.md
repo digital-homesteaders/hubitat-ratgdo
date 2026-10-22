@@ -46,8 +46,9 @@ against small stand-ins for the hub, then runs:
 - [x] Open, Stop partway and Close from Hubitat; the opener's own light
       reported on and off.
 - [x] Live updates when the door is opened and closed from the myQ app.
-- [x] Set Position: the door opened for 3.3 s of its ~14 s travel and stopped
-      (`door` open).
+- [x] Set Position and Preset Position: 25, 50, 75, 100 then 0 each stopped
+      where asked, about 3.5 s per 25% (log: "door is open (25%)" ...), and the
+      position was reported at each stop.
 - [x] After Save, the driver reconnects to the same ratgdo (name check) and maps
       the wall button: "connected (... toggleButton, wallButton)".
 - [x] Found on the hub: two updates in one burst logged "door is opening" twice
