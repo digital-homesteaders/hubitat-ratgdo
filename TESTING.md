@@ -43,12 +43,17 @@ against small stand-ins for the hub, then runs:
 - [x] The encrypted handshake with the real API key, the hello, and the entity
       list: "connected (door, light, motion, motor, obstruction, openings,
       queryButton, remotes, toggleButton)".
+- [x] Open, Stop partway and Close from Hubitat; the opener's own light
+      reported on and off.
+- [x] Live updates when the door is opened and closed from the myQ app.
+- [x] Found on the hub: two updates in one burst logged "door is opening" twice
+      (fixed in 0.1.1-dev; see CHANGELOG).
 
 ## Still needs a real hub
 
 - [ ] Handshake time on a C-7 and a C-8 (about 4 ms for both X25519 steps on an M-series Mac; each 40-byte message about 0.04 ms).
 - [ ] Stays connected alongside Home Assistant for a day or more.
-- [ ] Open, close, stop, toggle, set position, light, lock remotes.
+- [ ] Toggle, set position, Light On/Off, Lock/Unlock Remotes.
 - [ ] Motion, obstruction and openings update live.
 - [ ] Reconnects after a ratgdo reboot, a Wi-Fi drop and a hub reboot.
 - [ ] ratgdo32, ratgdo32 Disco (vehicle presence, arriving and leaving) and the encoder (`manuallyOperated`, exact position).

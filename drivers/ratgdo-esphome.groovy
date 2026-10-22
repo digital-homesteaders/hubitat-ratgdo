@@ -40,6 +40,7 @@ import javax.crypto.spec.SecretKeySpec
 @Field static final long DEAD_AFTER_MS = 150000
 @Field static final int BACKOFF_MAX_SECS = 300
 @Field static final int BAD_KEY_RETRY_SECS = 1800
+@Field static final int POSITION_STEP = 10
 
 // ESPHome API message types (api.proto)
 @Field static final int HELLO_REQ = 1, HELLO_RESP = 2, AUTH_REQ = 3, AUTH_RESP = 4
@@ -195,7 +196,7 @@ void connectNow() {
         status("offline", "The API port must be a number from 1 to 65535")
         return
     }
-    Map m = [phase: "hello", buf: new byte[0], entities: [:], roles: [:], lastRx: now()]
+    Map m = [phase: "hello", buf: new byte[0], entities: [:], roles: [:], sent: [:], lastRx: now()]
     MEM[device.idAsLong] = m
     status("connecting", null)
     try {
@@ -409,7 +410,9 @@ private void onState(Map m, Map f) {
             String door = doorState(pos, op)
             emit("door", door)
             emit("contact", door == "closed" ? "closed" : "open")
-            emit("position", Math.round(pos * 100))
+            long p = Math.round(pos * 100)
+            // About 2 updates a second while moving: report every 10%, then the exact stop.
+            if (op == 0 || Math.abs(p - ((lastValue("position") ?: 0) as long)) >= POSITION_STEP) emit("position", p)
             break
         case "light":
             String v = f[2] ? "on" : "off"
@@ -455,8 +458,16 @@ static String doorState(float pos, int op) {
     return pos <= 0f ? "closed" : "open"
 }
 
+/** What we last sent: within one execution the hub still returns the old value from currentValue. */
+private def lastValue(String name) {
+    Map sent = (Map) MEM[device.idAsLong]?.sent
+    return sent != null && sent.containsKey(name) ? sent[name] : device.currentValue(name)
+}
+
 private void emit(String name, def value) {
-    if (device.currentValue(name)?.toString() == value.toString()) return
+    if (lastValue(name)?.toString() == value.toString()) return
+    Map sent = (Map) MEM[device.idAsLong]?.sent
+    if (sent != null) sent[name] = value
     String text = "${device.displayName} ${name} is ${value}"
     if (txtEnable && name in ["door", "light", "motion", "obstruction", "remotes", "presence", "manuallyOperated"]) log.info text
     sendEvent(name: name, value: value, descriptionText: text)

@@ -57,7 +57,9 @@ class Hub {
     void advance(long ms) { clockOffset += ms }
 
     /** End of an execution: every script's state goes through JSON, as on the hub. */
-    void settle() { scripts.each { it.persistState() } }
+    void settle() {
+        scripts.each { it.persistState(); it.device?.commit() }
+    }
 
     /** A device running the named driver. */
     FakeDevice device(String driverName, String dni, Map props = [:], def parent = null) {
@@ -213,6 +215,7 @@ class FakeDevice {
     Map<String, String> data = [:]
     Map<String, Object> current = [:]
     List<Map> events = []
+    List<Map> pending = []   // like Hubitat, currentValue sees an event only after the execution ends (Hub.settle)
 
     long getIdAsLong() { id }
     String getDisplayName() { label ?: name }
@@ -222,8 +225,15 @@ class FakeDevice {
     void updateSetting(String k, Map v) { driver.settings[k] = v.type == "bool" ? v.value == "true" : v.value }
 
     void applyEvent(Map e) {
+        // The hub itself drops an event whose value matches the committed one.
+        if (current.containsKey(e.name as String) && current[e.name as String]?.toString() == e.value?.toString()) return
         events << new LinkedHashMap(e)
-        current[e.name as String] = e.value
+        pending << e
+    }
+
+    void commit() {
+        pending.each { current[it.name as String] = it.value }
+        pending.clear()
     }
 
     /** The latest event for an attribute. */

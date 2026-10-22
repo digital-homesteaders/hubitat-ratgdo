@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Two updates in one burst no longer log the same change twice (seen on a C-8).
+- While the door moves, `position` is reported every 10% instead of about twice a second; the final position is exact.
 - Toggle on firmware without a Toggle button (SecplusGDO) stops a moving door instead of reversing it.
 
 - Gelidus Research GRGDO boards (ESPHome RATGDO or SecplusGDO firmware); their ultrasound "Vehicle parked" sets `presence`.

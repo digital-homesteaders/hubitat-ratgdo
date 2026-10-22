@@ -597,4 +597,28 @@ check("Gelidus SecplusGDO end to end: its entity list, states, and Toggle withou
     assert w.rat.received.drop(before).collect { it[0] } == [20], "no Query status button: only re-subscribe"
 }
 
+check("two updates in one burst log once (seen on a C-8: 'door is opening' twice, 24 ms apart)") {
+    World w = connected(root, KEY)
+    Class d = w.d
+    byte[] a = w.rat.msg(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, 0.01f)), d.pbVarint(5, 1)))
+    byte[] l = w.rat.msg(24, d.concat(d.pbFixed32(1, LIGHT), d.pbVarint(2, 1)))
+    byte[] b = w.rat.msg(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, 0.02f)), d.pbVarint(5, 1)))
+    w.deliver(d.cat(a, l, b)); w.hub.settle()
+    assert w.dev.driver.log.at("info").count { it.contains("door is opening") } == 1
+    assert w.dev.events.count { it.name == "door" && it.value == "opening" } == 1
+}
+
+check("while the door moves, position is reported every 10%; the stop is exact") {
+    World w = connected(root, KEY)
+    Class d = w.d
+    int before = w.dev.events.count { it.name == "position" }
+    (1..28).each { i ->   // a 14 s open at 2 updates a second
+        w.push(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, (float) (i / 28))), d.pbVarint(5, i < 28 ? 1 : 0)))
+    }
+    List pos = w.dev.events.findAll { it.name == "position" }.drop(before)*.value
+    assert pos.size() <= 11 && pos.last() == 100L && w.dev.current.door == "open"
+    w.push(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, 0.43f)), d.pbVarint(5, 0)))
+    assert w.dev.current.position == 43L
+}
+
 Check.finish()
