@@ -125,8 +125,11 @@ your API key.** The driver never logs it, so the log is safe to share.
 
 ## Security
 
-The API key is stored as a password-type setting and is used only to set up
-each connection. The session keys exist only in memory and are never written
+The API key is stored as a password-type setting, like other Hubitat apps'
+passwords and keys: hidden on screen but not encrypted, so anyone signed in to
+the hub can reveal it. Turn on **Hub Login Security** and keep hub backups
+private. The key is used only to set up each connection and never crosses the
+network. The session keys exist only in memory and are never written
 to the hub's database. See [SECURITY.md](SECURITY.md) to report a vulnerability,
 and [docs/SPEC.md](docs/SPEC.md) for the protocol and design.
 
