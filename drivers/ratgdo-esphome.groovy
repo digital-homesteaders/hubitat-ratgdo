@@ -375,7 +375,7 @@ private void onMessage(Map m, int type, Map f) {
             if (m.roles.wallButton != null && device.currentValue("numberOfButtons") != 1) sendEvent(name: "numberOfButtons", value: 1)
             state.retry = 0
             state.remove("badKeyWarned")
-            status("online", "")
+            status("online", "none")
             log.info "${device.displayName}: connected (${m.roles.keySet().sort().join(', ')})"
             sendApi(SUBSCRIBE_STATES, new byte[0])
             break

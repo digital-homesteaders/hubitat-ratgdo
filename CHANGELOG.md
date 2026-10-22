@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `lastError` reads "none" once connected, instead of an empty value that the device page shows as "null".
 - The opener's wall button is a PushableButton (`pushed` 1 on each press), for rules.
 - `healthStatus`, Hubitat's standard online/offline attribute.
 - A different ESPHome device at the ratgdo's address is reported by name, instead of as a wrong key; a wrong key names the device too.

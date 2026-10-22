@@ -220,7 +220,7 @@ check("connects: socket, encrypted handshake, hello with the empty login, device
     assert w.sentTypes() == [1, 3, 9, 11, 20]
     assert new String(w.rat.received[0][1][1] as byte[], "UTF-8").startsWith("Hubitat ratgdo")
     assert w.rat.received[0][1][2] == 1L && w.rat.received[0][1][3] == 10L
-    assert w.dev.current.networkStatus == "online"
+    assert w.dev.current.networkStatus == "online" && w.dev.current.lastError == "none"
     assert w.dev.data.friendlyName == "Nexus Gate" && w.dev.data.esphomeVersion == "2026.10.0" && w.dev.data.model == "esp8266"
     assert !w.dev.data.values().any { it.contains("BC:FF") }, "the MAC address is not kept"
     assert w.dev.current.subMap(["door", "contact", "position", "light", "remotes", "motion", "obstruction", "motor", "openings"]) ==
