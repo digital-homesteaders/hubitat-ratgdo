@@ -1,0 +1,19 @@
+{
+  "packageName": "ratgdo (ESPHome)",
+  "author": "Digital Homesteaders",
+  "version": "0.1.0",
+  "minimumHEVersion": "2.3.0",
+  "dateReleased": "2026-10-22",
+  "documentationLink": "https://github.com/digital-homesteaders/hubitat-ratgdo#readme",
+  "licenseFile": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-ratgdo/main/LICENSE",
+  "releaseNotes": "First release: local, encrypted control of a ratgdo running ESPHome, using its API key.",
+  "drivers": [
+    {
+      "id": "4e1997b8-eb97-4958-bcb5-76f2c8703e2a",
+      "name": "ratgdo (ESPHome)",
+      "namespace": "ratgdo",
+      "location": "https://raw.githubusercontent.com/digital-homesteaders/hubitat-ratgdo/main/drivers/ratgdo-esphome.groovy",
+      "required": true
+    }
+  ]
+}

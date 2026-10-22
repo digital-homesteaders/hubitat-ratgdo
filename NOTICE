@@ -1,0 +1,38 @@
+Third-party notice
+
+The ESPHome native API details this driver uses (the frame layout, the
+Noise_NNpsk0_25519_ChaChaPoly_SHA256 handshake with its prologue and server
+hello, message numbers and field numbers) were learned from aioesphomeapi,
+the Python client Home Assistant uses, and its api.proto:
+
+- aioesphomeapi, Copyright (c) 2018 Otto Winter:
+  https://github.com/esphome/aioesphomeapi
+
+It is distributed under this permission notice:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+No aioesphomeapi code is copied. The crypto is written from the Noise
+Protocol Framework specification (public domain, https://noiseprotocol.org)
+and RFC 7748 and RFC 8439, whose test vectors are in tests/CryptoTest.groovy.
+The entity names the driver looks for come from the ratgdo ESPHome
+configuration, https://github.com/ratgdo/esphome-ratgdo.
+
+tests/fixtures/noise-vectors.json is made by tests/fixtures/noise_vectors.py
+with the `noise` library (noiseprotocol, MIT), the same one aioesphomeapi uses.

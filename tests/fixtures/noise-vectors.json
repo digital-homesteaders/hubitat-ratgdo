@@ -1,0 +1,23 @@
+{
+  "psk": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+  "initiatorEphemeral": "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+  "responderEphemeral": "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+  "msg1": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a299337c9382db20665fbf653bc5a4cb8",
+  "msg2": "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f05c3d57912f32eb203f9aefe108cb571",
+  "clientPlain": [
+    "000100140a0e487562697461742072617467646f1001180a",
+    "00030000"
+  ],
+  "clientCipher": [
+    "c9c3bc78b38f97b90e094fa2a4b6913c4eef968fc1e8399f28571d93eb29dc5f4ac31a11b5053bdf",
+    "dc9c1a443832a296bad5ca435c48d0d7e43b8e12"
+  ],
+  "serverPlain": [
+    "0002001b080110131a09323032362e31302e30220a6e657875732d67617465",
+    "00070000"
+  ],
+  "serverCipher": [
+    "2aba749b440c0e0b9937267bf67870e44defb111b147b9e81ac08f59b3da97e730bddbba120b4c828572bb8ac71385",
+    "a8f1b7ff60fe9de266eeb9de3d93f281676035b4"
+  ]
+}
