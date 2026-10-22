@@ -522,19 +522,17 @@ check("ratgdo32 Disco and encoder entities: vehicle presence, arriving/leaving, 
     bin(0x2004, 1); assert w.dev.current.manuallyOperated == "yes"
 }
 
-check("dry-contact and Security+ 1.0 entity names map without false matches") {
-    Class d = new Hub(root).compile(new File(root, "drivers/ratgdo-esphome.groovy"))
-    assert d.entityRole("binary_sensor", "open_limit_switch open limit switch") == null
-    assert d.entityRole("binary_sensor", "close_limit_switch close limit switch") == null
-    assert d.entityRole("binary_sensor", "dry_contact_light dry contact light") == null
-    assert d.entityRole("sensor", "encoder encoder") == null
-    assert d.entityRole("sensor", "wifi_signal wifi signal") == null
-    assert d.entityRole("button", "sync sync") == null
-}
-
-check("Gelidus GRGDO with SecplusGDO firmware: its own entity names map to the same roles") {
+check("entity names from every supported firmware map to the right role, with no false matches") {
     Class d = new Hub(root).compile(new File(root, "drivers/ratgdo-esphome.groovy"))
     Map want = [
+        // ratgdo dry-contact and Security+ 1.0 builds
+        "binary_sensor|open_limit_switch open limit switch": null,
+        "binary_sensor|close_limit_switch close limit switch": null,
+        "binary_sensor|dry_contact_light dry contact light": null,
+        "sensor|encoder encoder": null,
+        "sensor|wifi_signal wifi signal": null,
+        "button|sync sync": null,
+        // Gelidus GRGDO with SecplusGDO firmware
         "cover|garage_door garage door": "door",
         "light|garage_door_light garage door light": "light",
         "lock|lock_remotes lock remotes": "remotes",
@@ -544,6 +542,7 @@ check("Gelidus GRGDO with SecplusGDO firmware: its own entity names map to the s
         "binary_sensor|garage_button garage button": null,
         "binary_sensor|synced synced": null,
         "binary_sensor|vehicle_parked vehicle parked": "vehicle",
+        "binary_sensor|car_parked car parked": "vehicle",
         "binary_sensor|vehicle_arriving vehicle arriving": "arriving",
         "sensor|garage_door_openings garage door openings": "openings",
         "sensor|vehicle_distance vehicle distance": null,
@@ -555,6 +554,47 @@ check("Gelidus GRGDO with SecplusGDO firmware: its own entity names map to the s
         List p = k.tokenize("|")
         assert d.entityRole(p[0], p[1]) == role, k
     }
+}
+
+check("Gelidus SecplusGDO end to end: its entity list, states, and Toggle without a Toggle button stops a moving door") {
+    World w = world(root, KEY)
+    Class d = w.d
+    w.rat.entities.clear()
+    def ent = { int type, int k, String objId, String name ->
+        w.rat.entities[k] = [type, d.concat(d.concat(d.pbString(1, objId), d.pbFixed32(2, k)), d.pbString(3, name))]
+    }
+    ent(12, 0x3001, "synced", "Synced")
+    ent(12, 0x3002, "garage_button", "Garage Button")
+    ent(12, 0x3003, "garage_door_motor", "Garage Door Motor")
+    ent(12, 0x3004, "garage_door_obstruction_sensor", "Garage Door Obstruction Sensor")
+    ent(12, 0x3005, "garage_motion_sensor", "Garage Motion Sensor")
+    ent(12, 0x3006, "vehicle_parked", "Vehicle parked")
+    ent(12, 0x3007, "vehicle_arriving", "Vehicle arriving")
+    ent(12, 0x3008, "vehicle_leaving", "Vehicle leaving")
+    ent(13, 0x3009, "garage_door", "Garage Door")
+    ent(15, 0x300a, "garage_door_light", "Garage Door Light")
+    ent(58, 0x300b, "lock_remotes", "Lock remotes")
+    ent(16, 0x300c, "garage_door_openings", "Garage Door Openings")
+    ent(16, 0x300d, "vehicle_distance", "Vehicle Distance")
+    ent(61, 0x300e, "re-sync", "Re-sync")
+    ent(61, 0x300f, "factory_reset", "Factory Reset")
+    ent(17, 0x3010, "toggle_only", "Toggle Only")
+    w.rat.initialStates = [[22, d.pbFixed32(1, 0x3009)], [21, d.concat(d.pbFixed32(1, 0x3006), d.pbVarint(2, 1))],
+                           [25, d.concat(d.pbFixed32(1, 0x300c), d.pbFloat(2, 42f))]]
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.d.MEM[w.dev.idAsLong].roles == [motor: 0x3003, obstruction: 0x3004, motion: 0x3005, vehicle: 0x3006,
+        arriving: 0x3007, leaving: 0x3008, door: 0x3009, light: 0x300a, remotes: 0x300b, openings: 0x300c]
+    assert w.dev.current.subMap(["networkStatus", "door", "presence", "openings"]) ==
+        [networkStatus: "online", door: "closed", presence: "present", openings: 42L]
+    w.push(22, d.concat(d.concat(d.pbFixed32(1, 0x3009), d.pbFloat(3, 0.3f)), d.pbVarint(5, 1)))
+    w.dev.toggle(); w.pump()
+    assert w.lastSent(30)[1][8] == 1L, "a moving door stops"
+    w.push(22, d.concat(d.pbFixed32(1, 0x3009), d.pbFloat(3, 0.3f)))
+    w.dev.toggle(); w.pump()
+    assert Float.intBitsToFloat(w.lastSent(30)[1][5]) == 0f, "a stopped, part-open door closes"
+    int before = w.rat.received.size()
+    w.dev.refresh(); w.pump()
+    assert w.rat.received.drop(before).collect { it[0] } == [20], "no Query status button: only re-subscribe"
 }
 
 Check.finish()

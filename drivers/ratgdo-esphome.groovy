@@ -135,9 +135,11 @@ void stop() {
 }
 
 void toggle() {
-    Integer b = keyFor("toggleButton")
-    if (b != null) sendApi(BUTTON_CMD, pbFixed32(1, b))
-    else if (device.currentValue("door") == "closed") open()
+    Integer b = (Integer) MEM[device.idAsLong]?.roles?.get("toggleButton")
+    if (b != null) { sendApi(BUTTON_CMD, pbFixed32(1, b)); return }
+    String door = device.currentValue("door")
+    if (door in ["opening", "closing"]) stop()       // as the opener's own button does
+    else if (door == "closed") open()
     else close()
 }
 
@@ -375,8 +377,9 @@ static String entityRole(String domain, String words) {
         case "light": return "light"
         case "lock": return "remotes"
         case "binary_sensor":
+            if (words.contains("parked")) return "vehicle"                      // Gelidus ultrasound
             if (words.contains("vehicle")) {
-                if (words.contains("detected") || words.contains("parked")) return "vehicle"   // ratgdo32 Disco / Gelidus ultrasound
+                if (words.contains("detected")) return "vehicle"                // ratgdo32 Disco
                 if (words.contains("arriving")) return "arriving"
                 if (words.contains("leaving")) return "leaving"
                 return null

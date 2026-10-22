@@ -99,7 +99,7 @@ Door", "Garage Motion Sensor", "Garage Door Openings") still lines up.
 | binary_sensor motion / obstruction / motor | `motion` (active, inactive), `obstruction` (obstructed, clear), `motor` (running, idle) |
 | sensor openings | `openings` |
 | binary_sensor vehicle detected (Disco) or vehicle parked (Gelidus ultrasound) | `presence` (present, not present) |
-| binary_sensor vehicle arriving / leaving (Disco) | `vehicleMotion` (arriving, leaving, none) |
+| binary_sensor vehicle arriving / leaving (Disco, Gelidus ultrasound) | `vehicleMotion` (arriving, leaving, none) |
 | binary_sensor manually operated (encoder) | `manuallyOperated` (yes, no) |
 | button "Toggle door" | used by `toggle` when present |
 | button "Query status" | used by `refresh` when present |
@@ -115,7 +115,8 @@ signal, and every config number. With the encoder, the cover's own position is
 encoder-based, so nothing extra is needed for an exact `position`.
 
 `toggle` presses the ratgdo's own Toggle button, so it can stop a moving door.
-Without that button it opens a closed door and closes any other.
+Without that button (SecplusGDO) it stops a moving door, opens a closed one
+and closes any other.
 
 ## Health
 
