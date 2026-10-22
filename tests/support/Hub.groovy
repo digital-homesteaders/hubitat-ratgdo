@@ -122,6 +122,7 @@ abstract class HubitatScript extends Script {
     void runIn(Number secs, String handler, Map opts = [:]) { calls << ["runIn", secs, handler, opts] }
     void runEvery1Minute(String handler) { calls << ["runEvery1Minute", handler] }
     void unschedule(String handler = null) { calls << ["unschedule", handler] }
+    void pauseExecution(Number ms) { calls << ["pauseExecution", ms] }
 
     // ---- raw socket (drivers)
     FakeInterfaces getInterfaces() {

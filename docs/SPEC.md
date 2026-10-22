@@ -130,8 +130,15 @@ and closes any other.
 - The watchdog runs every minute. It pings after 50 s with nothing received and
   reconnects after 150 s. The ratgdo pings on its own after 60 s quiet and
   drops a client after 150 s.
-- Reconnects wait 5, 10, 20 s and so on, up to 5 minutes. A wrong key, or a
-  device without encryption, retries every 30 minutes and says so once.
+- Reconnects wait 5, 10, 20 s and so on, up to 5 minutes. A wrong key, a
+  device without encryption, or a different ESPHome device at the address
+  retries every 30 minutes and says so once.
+- **Restart** presses the board's Restart button (never a safe-mode one). The
+  goodbye that follows is expected: networkStatus "connecting", lastError
+  "Restarting", no warning, no backoff, reconnect after 15 s.
+- Every event goes through one check against what the driver last sent (kept in
+  memory across sessions) and is sent as a state change, because within one
+  execution the hub's currentValue still returns the old value.
 - The handshake has 15 s to finish.
 - `initialize()` runs on hub start (capability Initialize) and on Save.
 - Saving new driver code clears the in-memory session but may leave the socket

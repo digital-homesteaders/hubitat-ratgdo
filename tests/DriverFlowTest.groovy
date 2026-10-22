@@ -16,7 +16,7 @@ String KEY = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
 class FakeRatgdo {
     Class d
     byte[] psk
-    boolean wrongKey, plaintext, silent
+    boolean wrongKey, plaintext, silent, tamperAfterList
     String serverName = "nexus-gate"
     byte[] rxBuf = new byte[0]
     boolean gotHello
@@ -100,6 +100,7 @@ class FakeRatgdo {
                 ByteArrayOutputStream out = new ByteArrayOutputStream()
                 entities.each { k, v -> out.write(msg(v[0] as int, v[1] as byte[])) }
                 out.write(msg(19, new byte[0]))
+                if (tamperAfterList) { byte[] bad = msg(24, new byte[0]); bad[bad.length - 1] ^= 1; out.write(bad) }
                 return out.toByteArray()
             case 20:
                 ByteArrayOutputStream out = new ByteArrayOutputStream()
@@ -685,16 +686,76 @@ check("the wall button: each press is a pushed event, the release is not; push()
     assert w.dev.events.findAll { it.name == "pushed" }.last().type == "digital" && w.rat.received.size() == sent
 }
 
-check("restart: the ratgdo's Restart button, then the driver reconnects when it says goodbye") {
+check("restart: the ratgdo's Restart button; its goodbye is expected, so no warning or backoff, and a reconnect in 15 s") {
     World w = connected(root, KEY)
     w.dev.restart(); w.pump()
     assert w.lastSent(62)[1][1] == RESTART
     w.push(5, new byte[0])                         // ESPHome says goodbye as it reboots
-    assert w.dev.current.networkStatus == "offline"
-    assert w.dev.driver.callsNamed("runIn").last()[1..2] == [5, "connectNow"]
+    assert w.dev.current.networkStatus == "connecting" && w.dev.current.lastError == "Restarting"
+    assert w.dev.current.healthStatus == "online" && !w.dev.driver.log.at("warn")
+    assert w.dev.driver.callsNamed("runIn").last()[1..2] == [15, "connectNow"] && w.dev.driver.state.retry == 0
     w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities)
     w.dev.connectNow(); w.hub.settle(); w.pump()
     assert w.dev.current.networkStatus == "online"
+}
+
+check("review: a status change and its reversal in one execution both land (an odd number of failed reconnects ends offline)") {
+    World w = world(root, KEY)
+    w.dev.driver.interfaces.rawSocket.refuse = true
+    w.dev.updated(); w.hub.settle()
+    3.times { w.dev.connectNow(); w.hub.settle() }
+    assert w.dev.current.networkStatus == "offline"
+    w.dev.watchdog(); w.hub.settle()
+    assert w.dev.driver.callsNamed("socket.connect").size() == 4, "the watchdog leaves the backoff alone"
+    World v = world(root, KEY)                          // online, then a bad frame, in one burst
+    v.rat.tamperAfterList = true
+    v.dev.updated(); v.hub.settle(); v.pump()
+    assert v.dev.events.findAll { it.name == "networkStatus" }*.value.takeRight(2) == ["online", "offline"]
+    assert v.dev.current.networkStatus == "offline" && v.dev.current.healthStatus == "offline"
+}
+
+check("review: Restart never picks a safe-mode button; strict wall-button match") {
+    Class d = new Hub(root).compile(new File(root, "drivers/ratgdo-esphome.groovy"))
+    assert d.entityRole("button", "restart_safe_mode restart (safe mode)") == null
+    assert d.entityRole("button", "safe_mode_restart safe mode restart") == null
+    assert d.entityRole("binary_sensor", "learn_button learn button") == null
+    assert d.entityRole("binary_sensor", "remote_button remote button") == null
+    assert d.entityRole("binary_sensor", "button button") == "wallButton"
+}
+
+check("review: presetPosition takes a number too; numberOfButtons is set without a wall button") {
+    World w = world(root, KEY)
+    w.rat.entities.remove(BTN_SENSOR)
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.dev.current.numberOfButtons == 1
+    w.dev.presetPosition(50); w.pump()
+    assert Float.intBitsToFloat(w.lastSent(30)[1][5]) == 0.5f
+}
+
+check("review: the goodbye gets time to leave before the socket closes") {
+    World w = connected(root, KEY)
+    w.dev.updated(); w.hub.settle()
+    List names = w.dev.driver.calls.collect { it[0] }
+    int bye = names.lastIndexOf("pauseExecution")
+    assert bye > 0 && names.subList(bye, names.size()).contains("socket.close") && names[bye - 1] == "socket.send"
+}
+
+check("review: a different device at the address is not retried every 5 minutes; an unnamed device reads cleanly") {
+    World w = connected(root, KEY)
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities, serverName: "bt-proxy-1")
+    2.times { w.dev.connectNow(); w.hub.settle(); w.pump() }
+    assert w.dev.driver.callsNamed("runIn").last()[1..2] == [1800, "connectNow"]
+    assert w.dev.driver.log.at("error").size() == 1 && w.dev.current.networkStatus == "offline"
+    World u = world(root, KEY)
+    u.rat.wrongKey = true; u.rat.serverName = ""
+    u.dev.updated(); u.hub.settle(); u.pump()
+    assert u.dev.current.lastError == "Wrong API key: 172.16.214.150 rejected it"
+}
+
+check("review: a barely-open door logs 1%, not 0%") {
+    World w = connected(root, KEY)
+    w.push(22, w.d.concat(w.d.pbFixed32(1, DOOR), w.d.pbFloat(3, 0.004f)))
+    assert w.dev.driver.log.at("info").last() == "Nexus Gate door is open (1%)"
 }
 
 Check.finish()
