@@ -93,7 +93,7 @@ Door", "Garage Motion Sensor", "Garage Door Openings") still lines up.
 
 | ratgdo entity | Hubitat |
 |---|---|
-| cover (first, `garage` preferred) | `door` (open, closed, opening, closing), `contact`, `position` 0–100; `open`, `close`, `stop`, `setPosition`, `toggle` |
+| cover (first, `garage` preferred) | `door` (open, closed, opening, closing), `contact`, `position` 0–100; `open`, `close`, `stop`, `setPosition`, `presetPosition` (0/25/50/75/100), `toggle` |
 | light | `light` attribute; `lightOn`/`lightOff`; the optional child Generic Component Switch |
 | lock "Lock remotes" | `remotes` (locked, unlocked); `lockRemotes`/`unlockRemotes` |
 | binary_sensor motion / obstruction / motor | `motion` (active, inactive), `obstruction` (obstructed, clear), `motor` (running, idle) |

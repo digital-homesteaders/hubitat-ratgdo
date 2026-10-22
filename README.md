@@ -25,7 +25,7 @@ nothing on the ratgdo changes.
 
 | In Hubitat | From the ratgdo |
 |---|---|
-| `door`: open, closed, opening, closing. Commands: **Open**, **Close**, **Stop**, **Toggle**, **Set Position** | Door |
+| `door`: open, closed, opening, closing. Commands: **Open**, **Close**, **Stop**, **Toggle**, **Set Position** (0–100), **Preset Position** (0, 25, 50, 75 or 100) | Door |
 | `contact`: open or closed (closed only when the door is fully closed) | Door |
 | `position`: 0–100 | Door |
 | `light` attribute, **Light On** / **Light Off**, plus an optional light device | Light |

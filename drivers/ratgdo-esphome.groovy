@@ -81,6 +81,8 @@ metadata {
         command "stop"
         command "toggle"
         command "setPosition", [[name: "Position*", type: "NUMBER", description: "0 closed to 100 open"]]
+        command "presetPosition", [[name: "Position*", type: "ENUM", description: "Percent open",
+                                    constraints: ["0", "25", "50", "75", "100"]]]
         command "lightOn"
         command "lightOff"
         command "lockRemotes"
@@ -132,6 +134,9 @@ void logsOff() { device.updateSetting("logEnable", [value: "false", type: "bool"
 void open() { coverPosition(1f) }
 void close() { coverPosition(0f) }
 void setPosition(def pct) { coverPosition((float) (Math.max(0, Math.min(100, pct as int)) / 100)) }
+
+/** The same as setPosition, from a fixed list (the device page's dropdown). */
+void presetPosition(String pct) { setPosition(pct as int) }
 
 void stop() {
     Integer k = keyFor("door")

@@ -292,6 +292,8 @@ check("commands: the exact API message for each") {
     w.dev.close(); f = last(30); assert f[4] == 1L && Float.intBitsToFloat(f[5]) == 0f
     w.dev.setPosition(37); f = last(30); assert Math.abs(Float.intBitsToFloat(f[5]) - 0.37f) < 1e-6
     w.dev.setPosition(150); f = last(30); assert Float.intBitsToFloat(f[5]) == 1f
+    w.dev.presetPosition("25"); f = last(30); assert Float.intBitsToFloat(f[5]) == 0.25f
+    w.dev.presetPosition("0"); f = last(30); assert Float.intBitsToFloat(f[5]) == 0f
     w.dev.stop(); f = last(30); assert f[1] == DOOR && f[8] == 1L && f[4] == null
     w.dev.toggle(); f = last(62); assert f[1] == TOGGLE
     w.dev.lightOn(); f = last(32); assert f[1] == LIGHT && f[2] == 1L && f[3] == 1L
