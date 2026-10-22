@@ -34,7 +34,17 @@ nothing on the ratgdo changes.
 | `motor`: running or idle | Motor |
 | `remotes`: locked or unlocked. Commands: **Lock Remotes** / **Unlock Remotes** | Lock remotes |
 | `openings` | Openings counter |
+| `presence`: present or not present | Vehicle detected (ratgdo32 Disco) |
+| `vehicleMotion`: arriving, leaving or none | Vehicle arriving and leaving (ratgdo32 Disco) |
+| `manuallyOperated`: yes or no | Manually Operated (with the ratgdo encoder) |
 | `networkStatus`: connecting, online, offline or bad key. `lastError` says why | The connection |
+
+**Boards:** ratgdo v2.5i, ratgdo32 and ratgdo32 Disco on ESPHome firmware,
+including the dry-contact and Security+ 1.0 variants. A board only shows what its
+firmware has: dry-contact builds have no light or motion, for example, and only
+the Disco has vehicle sensing. With the ratgdo encoder fitted, the door's position
+comes from the encoder, so `position` is exact rather than estimated from
+travel time. The Disco's laser, LED, distance and voltage stay in ESPHome.
 
 **Toggle** presses the ratgdo's own Toggle button, so it can also stop a moving
 door. **Refresh** presses Query status. Settings such as opening duration or

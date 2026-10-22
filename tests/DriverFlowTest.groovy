@@ -494,4 +494,42 @@ check("the port is text (no '6,053' on the settings page); numbers from older sa
     assert !w.dev.driver.callsNamed("socket.connect") && w.dev.current.lastError.contains("API port")
 }
 
+check("ratgdo32 Disco and encoder entities: vehicle presence, arriving/leaving, manually operated; extras ignored") {
+    World w = world(root, KEY)
+    Class d = w.d
+    def ent = { int type, int k, String objId, String name ->
+        w.rat.entities[k] = [type, d.concat(d.concat(d.pbString(1, objId), d.pbFixed32(2, k)), d.pbString(3, name))]
+    }
+    ent(12, 0x2001, "vehicle_detected", "Vehicle detected")
+    ent(12, 0x2002, "vehicle_arriving", "Vehicle arriving")
+    ent(12, 0x2003, "vehicle_leaving", "Vehicle leaving")
+    ent(12, 0x2004, "manually_operated", "Manually Operated")
+    ent(16, 0x2005, "vehicle_distance_actual_filtered", "Vehicle distance actual filtered")
+    ent(16, 0x2006, "voltage", "Voltage")
+    ent(16, 0x2007, "encoder", "Encoder")
+    ent(17, 0x2008, "laser", "LASER")
+    ent(61, 0x2009, "encoder_calibration_reset", "Encoder Calibration Reset")
+    w.dev.updated(); w.hub.settle(); w.pump()
+    Map roles = w.d.MEM[w.dev.idAsLong].roles
+    assert roles.vehicle == 0x2001 && roles.arriving == 0x2002 && roles.leaving == 0x2003 && roles.manual == 0x2004
+    assert roles.openings == OPENINGS && roles.motion == MOTION && roles.size() == 13
+    def bin = { int k, int v -> w.push(21, d.concat(d.pbFixed32(1, k), d.pbVarint(2, v))) }
+    bin(0x2001, 1); assert w.dev.current.presence == "present"
+    bin(0x2002, 1); assert w.dev.current.vehicleMotion == "arriving"
+    bin(0x2002, 0); assert w.dev.current.vehicleMotion == "none"
+    bin(0x2003, 1); assert w.dev.current.vehicleMotion == "leaving"
+    bin(0x2001, 0); bin(0x2003, 0); assert w.dev.current.presence == "not present" && w.dev.current.vehicleMotion == "none"
+    bin(0x2004, 1); assert w.dev.current.manuallyOperated == "yes"
+}
+
+check("dry-contact and Security+ 1.0 entity names map without false matches") {
+    Class d = new Hub(root).compile(new File(root, "drivers/ratgdo-esphome.groovy"))
+    assert d.entityRole("binary_sensor", "open_limit_switch open limit switch") == null
+    assert d.entityRole("binary_sensor", "close_limit_switch close limit switch") == null
+    assert d.entityRole("binary_sensor", "dry_contact_light dry contact light") == null
+    assert d.entityRole("sensor", "encoder encoder") == null
+    assert d.entityRole("sensor", "wifi_signal wifi signal") == null
+    assert d.entityRole("button", "sync sync") == null
+}
+
 Check.finish()

@@ -60,6 +60,7 @@ metadata {
         capability "GarageDoorControl"
         capability "ContactSensor"
         capability "MotionSensor"
+        capability "PresenceSensor"
         capability "Refresh"
         capability "Initialize"
 
@@ -69,6 +70,8 @@ metadata {
         attribute "motor", "enum", ["running", "idle"]
         attribute "remotes", "enum", ["locked", "unlocked"]
         attribute "openings", "number"
+        attribute "vehicleMotion", "enum", ["arriving", "leaving", "none"]
+        attribute "manuallyOperated", "enum", ["yes", "no"]
         attribute "networkStatus", "enum", ["connecting", "online", "offline", "bad key"]
         attribute "lastError", "string"
 
@@ -372,6 +375,13 @@ static String entityRole(String domain, String words) {
         case "light": return "light"
         case "lock": return "remotes"
         case "binary_sensor":
+            if (words.contains("vehicle")) {
+                if (words.contains("detected")) return "vehicle"
+                if (words.contains("arriving")) return "arriving"
+                if (words.contains("leaving")) return "leaving"
+                return null
+            }
+            if (words.contains("manually")) return "manual"
             if (words.contains("obstruction")) return "obstruction"
             if (words.contains("motion")) return "motion"
             if (words.contains("motor")) return "motor"
@@ -417,6 +427,18 @@ private void onState(Map m, Map f) {
         case "motor":
             if (!f[3]) emit("motor", f[2] ? "running" : "idle")
             break
+        case "vehicle":
+            if (!f[3]) emit("presence", f[2] ? "present" : "not present")
+            break
+        case "arriving":
+        case "leaving":
+            if (f[3]) break
+            m[e.role] = f[2] ? true : false
+            emit("vehicleMotion", m.arriving ? "arriving" : m.leaving ? "leaving" : "none")
+            break
+        case "manual":
+            if (!f[3]) emit("manuallyOperated", f[2] ? "yes" : "no")
+            break
         case "openings":
             if (!f[3] && f[2] != null) emit("openings", Math.round(Float.intBitsToFloat((Integer) f[2])))
             break
@@ -433,7 +455,7 @@ static String doorState(float pos, int op) {
 private void emit(String name, def value) {
     if (device.currentValue(name)?.toString() == value.toString()) return
     String text = "${device.displayName} ${name} is ${value}"
-    if (txtEnable && name in ["door", "light", "motion", "obstruction", "remotes"]) log.info text
+    if (txtEnable && name in ["door", "light", "motion", "obstruction", "remotes", "presence", "manuallyOperated"]) log.info text
     sendEvent(name: name, value: value, descriptionText: text)
 }
 

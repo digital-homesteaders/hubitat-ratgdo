@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- ratgdo32 Disco: `presence` (vehicle detected) and `vehicleMotion` (arriving, leaving). With the encoder: `manuallyOperated`.
 - The API port setting is text, so the settings page shows 6053 instead of "6,053".
 
 ## 0.1.0 (2026-10-22)

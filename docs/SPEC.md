@@ -97,6 +97,9 @@ renamed `id_prefix` or a v2.5/v32 board still lines up.
 | lock "Lock remotes" | `remotes` (locked, unlocked); `lockRemotes`/`unlockRemotes` |
 | binary_sensor motion / obstruction / motor | `motion` (active, inactive), `obstruction` (obstructed, clear), `motor` (running, idle) |
 | sensor openings | `openings` |
+| binary_sensor vehicle detected (Disco) | `presence` (present, not present) |
+| binary_sensor vehicle arriving / leaving (Disco) | `vehicleMotion` (arriving, leaving, none) |
+| binary_sensor manually operated (encoder) | `manuallyOperated` (yes, no) |
 | button "Toggle door" | used by `toggle` when present |
 | button "Query status" | used by `refresh` when present |
 
@@ -104,6 +107,11 @@ Door state: `current_operation` 1 means opening and 2 means closing.
 Otherwise position 0 is `closed` and any other position is `open`. The contact
 is `closed` only when the door is closed. Protobuf leaves out zero values, so a
 missing position is 0, which is closed.
+
+Left out on purpose: the encoder step count, the Disco's vehicle distance
+(every few seconds; too chatty for hub events), laser, LED, voltage and Wi-Fi
+signal, and every config number. With the encoder, the cover's own position is
+encoder-based, so nothing extra is needed for an exact `position`.
 
 `toggle` presses the ratgdo's own Toggle button, so it can stop a moving door.
 Without that button it opens a closed door and closes any other.
