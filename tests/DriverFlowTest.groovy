@@ -254,10 +254,13 @@ check("door states: opening, closing, partly open, open, back to closed") {
     def door = { float pos, int op -> w.push(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, pos)), d.pbVarint(5, op))) }
     door(0.1f, 1); assert w.dev.current.door == "opening" && w.dev.current.contact == "open" && w.dev.current.position == 10L
     door(0.4f, 0); assert w.dev.current.door == "open" && w.dev.current.position == 40L
-    door(1f, 0);   assert w.dev.current.door == "open" && w.dev.current.position == 100L
+    assert w.dev.driver.log.at("info").last() == "Nexus Gate door is open (40%)"
+    door(0.6f, 1); door(1f, 0)
+    assert w.dev.current.door == "open" && w.dev.current.position == 100L
+    assert w.dev.driver.log.at("info").last() == "Nexus Gate door is open"
     door(0.9f, 2); assert w.dev.current.door == "closing" && w.dev.current.contact == "open"
     door(0f, 0);   assert w.dev.current.door == "closed" && w.dev.current.contact == "closed" && w.dev.current.position == 0L
-    assert w.dev.driver.log.at("info").count { it.contains("door is") } == 5
+    assert w.dev.driver.log.at("info").count { it.contains("door is") } == 7   // incl. "closed" on connect
 }
 
 check("sensor states: light, motion, obstruction, motor, remotes, openings; missing states are skipped") {

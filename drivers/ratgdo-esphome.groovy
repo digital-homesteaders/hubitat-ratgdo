@@ -441,9 +441,9 @@ private void onState(Map m, Map f) {
             float pos = f[3] != null ? Float.intBitsToFloat((Integer) f[3]) : 0f
             int op = (f[5] ?: 0L) as int
             String door = doorState(pos, op)
-            emit("door", door)
-            emit("contact", door == "closed" ? "closed" : "open")
             long p = Math.round(pos * 100)
+            emit("door", door, door == "open" && p < 100 ? "${p}%" : null)   // "door is open (25%)"
+            emit("contact", door == "closed" ? "closed" : "open")
             // About 2 updates a second while moving: report every 10%, then the exact stop.
             if (op == 0 || Math.abs(p - ((lastValue("position") ?: 0) as long)) >= POSITION_STEP) emit("position", p)
             break
@@ -503,11 +503,11 @@ private def lastValue(String name) {
     return sent != null && sent.containsKey(name) ? sent[name] : device.currentValue(name)
 }
 
-private void emit(String name, def value) {
+private void emit(String name, def value, String detail = null) {
     if (lastValue(name)?.toString() == value.toString()) return
     Map sent = (Map) MEM[device.idAsLong]?.sent
     if (sent != null) sent[name] = value
-    String text = "${device.displayName} ${name} is ${value}"
+    String text = "${device.displayName} ${name} is ${value}" + (detail ? " (${detail})" : "")
     if (txtEnable && name in ["door", "light", "motion", "obstruction", "remotes", "presence", "manuallyOperated"]) log.info text
     sendEvent(name: name, value: value, descriptionText: text)
 }

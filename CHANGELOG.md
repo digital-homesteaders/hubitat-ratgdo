@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A door stopped part-way logs its position: "door is open (25%)".
 - **Preset Position**: a 0, 25, 50, 75 or 100% dropdown next to Set Position, like Home Assistant's door buttons.
 - `lastError` reads "none" once connected, instead of an empty value that the device page shows as "null".
 - The opener's wall button is a PushableButton (`pushed` 1 on each press), for rules.
