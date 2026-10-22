@@ -52,7 +52,7 @@ against small stand-ins for the hub, then runs:
 - [x] After Save, the driver reconnects to the same ratgdo (name check) and maps
       the wall button: "connected (... toggleButton, wallButton)".
 - [x] Found on the hub: two updates in one burst logged "door is opening" twice
-      (fixed in 0.1.1-dev; see CHANGELOG).
+      (fixed; see CHANGELOG, Unreleased).
 
 ## Still needs a real hub
 
