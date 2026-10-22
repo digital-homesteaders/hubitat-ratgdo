@@ -85,7 +85,8 @@ metadata {
             description: "For example 192.168.1.50. A fixed (reserved) address is best."
         input "apiKey", "password", title: "API encryption key", required: true,
             description: "The 'api: encryption: key:' value from the ratgdo's YAML, also shown in Home Assistant"
-        input "port", "number", title: "API port", defaultValue: 6053
+        input "port", "text", title: "API port", defaultValue: "6053",
+            description: "Leave at 6053 unless the ratgdo's YAML sets another"
         input "lightChild", "bool", title: "Add the light as its own device", defaultValue: true
         input "txtEnable", "bool", title: "Log door, light and motion changes", defaultValue: true
         input "logEnable", "bool", title: "Debug logging (turns off after 30 minutes)", defaultValue: false
@@ -184,11 +185,16 @@ void connectNow() {
         badKey("The API key must be the 44-character base64 value from the ratgdo's YAML")
         return
     }
+    Integer p = apiPort()
+    if (p == null) {
+        status("offline", "The API port must be a number from 1 to 65535")
+        return
+    }
     Map m = [phase: "hello", buf: new byte[0], entities: [:], roles: [:], lastRx: now()]
     MEM[device.idAsLong] = m
     status("connecting", null)
     try {
-        interfaces.rawSocket.connect([byteInterface: true], host as String, (port ?: 6053) as int)
+        interfaces.rawSocket.connect([byteInterface: true], host as String, p)
     } catch (e) {
         MEM.remove(device.idAsLong)
         reconnectLater("Can't reach ${host}: ${e.message}")
@@ -219,6 +225,12 @@ void socketStatus(String message) {
     // Only a live session counts: closing an old socket can report late, and the
     // handshake has its own timeout.
     if (MEM[device.idAsLong]?.phase == "ready") reconnectLater("Connection lost (${message})")
+}
+
+/** The port setting as a number; text, so the hub doesn't show "6,053". Older saves may be numbers. */
+private Integer apiPort() {
+    String s = (port ?: "6053").toString().replace(",", "").trim()
+    return s.isInteger() && (s as int) in 1..65535 ? s as int : null
 }
 
 private void disconnect() {

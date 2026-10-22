@@ -481,4 +481,17 @@ check("refresh while offline connects straight away") {
     assert w.dev.current.networkStatus == "online"
 }
 
+check("the port is text (no '6,053' on the settings page); numbers from older saves and commas still work") {
+    [["6053", 6053], [6053L, 6053], ["6,053", 6053], [" 7000 ", 7000], [null, 6053]].each { v, want ->
+        World w = world(root, KEY)
+        w.dev.driver.settings.port = v
+        w.dev.updated(); w.hub.settle()
+        assert w.dev.driver.callsNamed("socket.connect")[0][2] == want, "port ${v}"
+    }
+    World w = world(root, KEY)
+    w.dev.driver.settings.port = "60a"
+    w.dev.updated(); w.hub.settle()
+    assert !w.dev.driver.callsNamed("socket.connect") && w.dev.current.lastError.contains("API port")
+}
+
 Check.finish()
