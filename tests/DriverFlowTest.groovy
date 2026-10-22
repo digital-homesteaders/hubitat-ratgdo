@@ -532,4 +532,29 @@ check("dry-contact and Security+ 1.0 entity names map without false matches") {
     assert d.entityRole("button", "sync sync") == null
 }
 
+check("Gelidus GRGDO with SecplusGDO firmware: its own entity names map to the same roles") {
+    Class d = new Hub(root).compile(new File(root, "drivers/ratgdo-esphome.groovy"))
+    Map want = [
+        "cover|garage_door garage door": "door",
+        "light|garage_door_light garage door light": "light",
+        "lock|lock_remotes lock remotes": "remotes",
+        "binary_sensor|garage_door_obstruction_sensor garage door obstruction sensor": "obstruction",
+        "binary_sensor|garage_motion_sensor garage motion sensor": "motion",
+        "binary_sensor|garage_door_motor garage door motor": "motor",
+        "binary_sensor|garage_button garage button": null,
+        "binary_sensor|synced synced": null,
+        "binary_sensor|vehicle_parked vehicle parked": "vehicle",
+        "binary_sensor|vehicle_arriving vehicle arriving": "arriving",
+        "sensor|garage_door_openings garage door openings": "openings",
+        "sensor|vehicle_distance vehicle distance": null,
+        "button|factory_reset factory reset": null,
+        "button|re-sync re-sync": null,
+        "button|reset_door_timings reset door timings": null,
+    ]
+    want.each { k, role ->
+        List p = k.tokenize("|")
+        assert d.entityRole(p[0], p[1]) == role, k
+    }
+}
+
 Check.finish()

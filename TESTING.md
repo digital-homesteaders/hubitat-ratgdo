@@ -46,4 +46,5 @@ Not yet confirmed (0.1.0):
 - [ ] Motion, obstruction and openings update live.
 - [ ] Reconnects after a ratgdo reboot, a Wi-Fi drop and a hub reboot.
 - [ ] ratgdo32, ratgdo32 Disco (vehicle presence, arriving and leaving) and the encoder (`manuallyOperated`, exact position).
+- [ ] A Gelidus GRGDO board with SecplusGDO firmware (after adding an API key).
 - [ ] Older ESPHome firmware (before 2026.1, which still expects the login message).

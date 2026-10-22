@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Gelidus Research GRGDO boards (ESPHome RATGDO or SecplusGDO firmware); their ultrasound "Vehicle parked" sets `presence`.
 - ratgdo32 Disco: `presence` (vehicle detected) and `vehicleMotion` (arriving, leaving). With the encoder: `manuallyOperated`.
 - The API port setting is text, so the settings page shows 6053 instead of "6,053".
 

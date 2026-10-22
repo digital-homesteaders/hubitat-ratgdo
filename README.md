@@ -40,7 +40,9 @@ nothing on the ratgdo changes.
 | `networkStatus`: connecting, online, offline or bad key. `lastError` says why | The connection |
 
 **Boards:** ratgdo v2.5i, ratgdo32 and ratgdo32 Disco on ESPHome firmware,
-including the dry-contact and Security+ 1.0 variants. A board only shows what its
+including the dry-contact and Security+ 1.0 variants, and Gelidus Research GRGDO
+boards with either ESPHome RATGDO or ESPHome SecplusGDO firmware. Gelidus's stock
+configs have no API key, so add one under `api: encryption:` and flash it first. A board only shows what its
 firmware has: dry-contact builds have no light or motion, for example, and only
 the Disco has vehicle sensing. With the ratgdo encoder fitted, the door's position
 comes from the encoder, so `position` is exact rather than estimated from

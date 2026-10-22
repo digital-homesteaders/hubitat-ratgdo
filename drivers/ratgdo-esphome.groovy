@@ -376,7 +376,7 @@ static String entityRole(String domain, String words) {
         case "lock": return "remotes"
         case "binary_sensor":
             if (words.contains("vehicle")) {
-                if (words.contains("detected")) return "vehicle"
+                if (words.contains("detected") || words.contains("parked")) return "vehicle"   // ratgdo32 Disco / Gelidus ultrasound
                 if (words.contains("arriving")) return "arriving"
                 if (words.contains("leaving")) return "leaving"
                 return null

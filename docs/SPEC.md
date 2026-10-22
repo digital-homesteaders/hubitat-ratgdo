@@ -88,7 +88,8 @@ Unknown types are skipped.
 ## Entities to Hubitat
 
 An entity is matched by domain plus a word in its `object_id` or name, so a
-renamed `id_prefix` or a v2.5/v32 board still lines up.
+renamed `id_prefix`, a v2.5/v32 board, or Gelidus's SecplusGDO firmware ("Garage
+Door", "Garage Motion Sensor", "Garage Door Openings") still lines up.
 
 | ratgdo entity | Hubitat |
 |---|---|
@@ -97,7 +98,7 @@ renamed `id_prefix` or a v2.5/v32 board still lines up.
 | lock "Lock remotes" | `remotes` (locked, unlocked); `lockRemotes`/`unlockRemotes` |
 | binary_sensor motion / obstruction / motor | `motion` (active, inactive), `obstruction` (obstructed, clear), `motor` (running, idle) |
 | sensor openings | `openings` |
-| binary_sensor vehicle detected (Disco) | `presence` (present, not present) |
+| binary_sensor vehicle detected (Disco) or vehicle parked (Gelidus ultrasound) | `presence` (present, not present) |
 | binary_sensor vehicle arriving / leaving (Disco) | `vehicleMotion` (arriving, leaving, none) |
 | binary_sensor manually operated (encoder) | `manuallyOperated` (yes, no) |
 | button "Toggle door" | used by `toggle` when present |
