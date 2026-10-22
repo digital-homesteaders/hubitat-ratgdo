@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The opener's wall button is a PushableButton (`pushed` 1 on each press), for rules.
+- `healthStatus`, Hubitat's standard online/offline attribute.
+- A different ESPHome device at the ratgdo's address is reported by name, instead of as a wrong key; a wrong key names the device too.
+- Save and uninstall say goodbye to the ratgdo (ESPHome's DisconnectRequest), freeing its connection slot at once.
 - Two updates in one burst no longer log the same change twice (seen on a C-8).
 - While the door moves, `position` is reported every 10% instead of about twice a second; the final position is exact.
 - Toggle on firmware without a Toggle button (SecplusGDO) stops a moving door instead of reversing it.

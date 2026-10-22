@@ -37,7 +37,8 @@ nothing on the ratgdo changes.
 | `presence`: present or not present | Vehicle detected (ratgdo32 Disco) or Vehicle parked (Gelidus ultrasound) |
 | `vehicleMotion`: arriving, leaving or none | Vehicle arriving and leaving (ratgdo32 Disco, Gelidus ultrasound) |
 | `manuallyOperated`: yes or no | Manually Operated (with the ratgdo encoder) |
-| `networkStatus`: connecting, online, offline or bad key. `lastError` says why | The connection |
+| `pushed`: button 1, each time the opener's wall button is pressed | Button |
+| `networkStatus`: connecting, online, offline or bad key. `lastError` says why. `healthStatus`: Hubitat's standard online or offline | The connection |
 
 **Boards:** ratgdo v2.5i, ratgdo32 and ratgdo32 Disco on ESPHome firmware,
 including the dry-contact and Security+ 1.0 variants, and Gelidus Research GRGDO
@@ -48,6 +49,9 @@ light or motion, for example, and only the Disco and Gelidus boards with a
 vehicle sensor have vehicle sensing. With the ratgdo encoder fitted, the door's position
 comes from the encoder, so `position` is exact rather than estimated from
 travel time. The Disco's laser, LED, distance and voltage stay in ESPHome.
+
+The wall button lets rules react to someone using the opener's own button. The
+**Push** command only records a press in Hubitat; it never moves the door.
 
 **Toggle** presses the board's own Toggle button. Firmware without one
 (SecplusGDO) gets the same effect from the driver: a moving door stops, a closed
@@ -108,6 +112,7 @@ For a second ratgdo, add another virtual device the same way.
 
 | `networkStatus` / `lastError` | What to do |
 |---|---|
+| **offline**: "A different ESPHome device ... answers at" | The IP address now belongs to another ESPHome device, often after a DHCP change. Fix the IP (a router reservation stops it happening again), then **Save Preferences**. |
 | **bad key**: "Wrong API key" | Copy the key again from the YAML. It must be exact, including the `=` at the end. |
 | **bad key**: "no API key set" | The ratgdo runs without encryption. Add `api: encryption: key:` to its YAML and flash it. Generate a key at [esphome.io](https://esphome.io/components/api.html). |
 | **offline**: "Can't reach" | Check the IP address, and that the hub can reach port 6053 (VLANs, firewall). |

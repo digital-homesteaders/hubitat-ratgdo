@@ -62,6 +62,7 @@ metadata {
         capability "ContactSensor"
         capability "MotionSensor"
         capability "PresenceSensor"
+        capability "PushableButton"
         capability "Refresh"
         capability "Initialize"
 
@@ -74,6 +75,7 @@ metadata {
         attribute "vehicleMotion", "enum", ["arriving", "leaving", "none"]
         attribute "manuallyOperated", "enum", ["yes", "no"]
         attribute "networkStatus", "enum", ["connecting", "online", "offline", "bad key"]
+        attribute "healthStatus", "enum", ["online", "offline"]
         attribute "lastError", "string"
 
         command "stop"
@@ -103,14 +105,15 @@ void installed() { initialize() }
 
 void updated() {
     if (logEnable) runIn(1800, "logsOff")
+    device.removeDataValue("esphomeName")   // Save re-learns which ratgdo is at this address
     syncLightChild()
     initialize()
 }
 
-void uninstalled() { disconnect() }
+void uninstalled() { disconnect(true) }
 
 void initialize() {
-    disconnect()
+    disconnect(true)
     state.retry = 0
     state.remove("badKeyWarned")
     unschedule("watchdog")
@@ -142,6 +145,14 @@ void toggle() {
     if (door in ["opening", "closing"]) stop()       // as the opener's own button does
     else if (door == "closed") open()
     else close()
+}
+
+/** PushableButton: records a press in Hubitat only. It never moves the door (use Toggle for that). */
+void push(def n = 1) { pushed(n as int, "digital") }
+
+private void pushed(int n, String type) {
+    if (txtEnable) log.info "${device.displayName} button ${n} was pushed (${type})"
+    sendEvent(name: "pushed", value: n, isStateChange: true, type: type, descriptionText: "${device.displayName} button ${n} was pushed")
 }
 
 void lightOn() { lightState(true) }
@@ -239,9 +250,13 @@ private Integer apiPort() {
     return s.isInteger() && (s as int) in 1..65535 ? s as int : null
 }
 
-private void disconnect() {
+/** Close the session; goodbye sends ESPHome's DisconnectRequest first, which frees the ratgdo's slot at once. */
+private void disconnect(boolean goodbye = false) {
     unschedule("handshakeTimeout")
     unschedule("connectNow")
+    if (goodbye && MEM[device.idAsLong]?.phase == "ready") {
+        try { sendApi(DISCONNECT_REQ, new byte[0]) } catch (ignored) { }
+    }
     if (MEM.remove(device.idAsLong) != null) {
         try { interfaces.rawSocket.close() } catch (ignored) { }
     }
@@ -267,6 +282,9 @@ private void badKey(String why) {
 
 private void status(String s, String error) {
     if (device.currentValue("networkStatus") != s) sendEvent(name: "networkStatus", value: s)
+    // Hubitat's standard online/offline; a reconnect in progress keeps the last value.
+    String health = s == "online" ? "online" : s == "connecting" ? null : "offline"
+    if (health && device.currentValue("healthStatus") != health) sendEvent(name: "healthStatus", value: health)
     if (error != null && device.currentValue("lastError") != error) sendEvent(name: "lastError", value: error)
 }
 
@@ -297,12 +315,20 @@ private boolean onFrame(Map m, byte[] f) {
     switch (m.phase) {
         case "hello":
             if (f.length == 0 || f[0] != 1) { reconnectLater("The ratgdo offered an unknown encryption protocol"); return false }
+            int end = 1
+            while (end < f.length && f[end] != 0) end++
+            m.name = new String(f, 1, end - 1, "UTF-8")
+            String pinned = device.getDataValue("esphomeName")
+            if (pinned && m.name && m.name != pinned) {
+                reconnectLater("A different ESPHome device ('${m.name}') answers at ${host}, not '${pinned}'. Fix the IP address, then Save")
+                return false
+            }
             m.phase = "handshake"
             return true
         case "handshake":
             if (f.length == 0 || f[0] != 0) {
                 String why = f.length > 1 ? new String(f, 1, f.length - 1, "UTF-8") : ""
-                if (why == "Handshake MAC failure") badKey("Wrong API key: the ratgdo rejected it")
+                if (why == "Handshake MAC failure") badKey("Wrong API key: '${m.name}' at ${host} rejected it")
                 else reconnectLater("Handshake refused: ${why}")
                 return false
             }
@@ -346,6 +372,7 @@ private void onMessage(Map m, int type, Map f) {
             }
             break
         case LIST_DONE:
+            if (m.roles.wallButton != null && device.currentValue("numberOfButtons") != 1) sendEvent(name: "numberOfButtons", value: 1)
             state.retry = 0
             state.remove("badKeyWarned")
             status("online", "")
@@ -389,6 +416,7 @@ static String entityRole(String domain, String words) {
             if (words.contains("obstruction")) return "obstruction"
             if (words.contains("motion")) return "motion"
             if (words.contains("motor")) return "motor"
+            if (words.contains("button")) return "wallButton"                   // the opener's wall button
             return null
         case "sensor": return words.contains("opening") ? "openings" : null
         case "button":
@@ -429,6 +457,12 @@ private void onState(Map m, Map f) {
             break
         case "obstruction":
             if (!f[3]) emit("obstruction", f[2] ? "obstructed" : "clear")
+            break
+        case "wallButton":
+            if (f[3]) break
+            boolean down = f[2] ? true : false
+            if (down && m.wallDown != true) pushed(1, "physical")    // a press, not the release
+            m.wallDown = down
             break
         case "motor":
             if (!f[3]) emit("motor", f[2] ? "running" : "idle")

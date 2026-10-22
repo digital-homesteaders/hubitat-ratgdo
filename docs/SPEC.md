@@ -29,7 +29,7 @@ opening duration or the learn switch, which belong in the ESPHome dashboard.
 |---|---|---|
 | 1 | TCP to port 6053 (`interfaces.rawSocket`, `byteInterface: true`) | |
 | 2 | `01 00 00` (hello), then `01 LL LL 00` + Noise message 1 | |
-| 3 | | `01 LL LL 01 name\0 mac\0`: server hello |
+| 3 | | `01 LL LL 01 name\0 mac\0`: server hello. The name must match the one learned on the first connection (device data `esphomeName`; Save clears it), or the driver stops here |
 | 4 | | `01 LL LL 00` + Noise message 2, or `01 LL LL 01 reason`: rejected |
 | 5 | encrypted `HelloRequest` + empty `AuthenticationRequest` | `HelloResponse` |
 | 6 | `DeviceInfoRequest`, `ListEntitiesRequest` | device info, one message per entity, `ListEntitiesDoneResponse` |
@@ -101,6 +101,7 @@ Door", "Garage Motion Sensor", "Garage Door Openings") still lines up.
 | binary_sensor vehicle detected (Disco) or vehicle parked (Gelidus ultrasound) | `presence` (present, not present) |
 | binary_sensor vehicle arriving / leaving (Disco, Gelidus ultrasound) | `vehicleMotion` (arriving, leaving, none) |
 | binary_sensor manually operated (encoder) | `manuallyOperated` (yes, no) |
+| binary_sensor button / garage button | `pushed` 1 on each press (not the release); `numberOfButtons` 1. `push()` records a press only and never moves the door |
 | button "Toggle door" | used by `toggle` when present |
 | button "Query status" | used by `refresh` when present |
 
@@ -121,7 +122,10 @@ and closes any other.
 ## Health
 
 - `networkStatus` is connecting, online (after the entity list), offline or
-  bad key. `lastError` says why in plain words.
+  bad key. `lastError` says why in plain words. `healthStatus` (Hubitat's
+  standard) is online or offline; a reconnect in progress keeps the last value.
+- Save and uninstall send DisconnectRequest before closing, so the ESP8266's
+  slot (4 in all) frees at once. Error paths just close.
 - The watchdog runs every minute. It pings after 50 s with nothing received and
   reconnects after 150 s. The ratgdo pings on its own after 60 s quiet and
   drops a client after 150 s.

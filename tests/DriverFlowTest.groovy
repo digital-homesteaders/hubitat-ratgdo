@@ -17,6 +17,7 @@ class FakeRatgdo {
     Class d
     byte[] psk
     boolean wrongKey, plaintext, silent
+    String serverName = "nexus-gate"
     byte[] rxBuf = new byte[0]
     boolean gotHello
     Map hs
@@ -69,7 +70,7 @@ class FakeRatgdo {
         byte[] re = d.slice(msg1, 0, 32)
         h = d.sha256(cat(h, re)); o = d.hkdf(ck, re, 2); ck = o[0]
         byte[] tag1 = d.slice(msg1, 32, 48)
-        byte[] hello = frame(cat([1] as byte[], "nexus-gate\u0000BCFF4D901148\u0000".bytes))
+        byte[] hello = frame(cat([1] as byte[], (serverName + "\u0000BCFF4D901148\u0000").bytes))
         if (wrongKey || d.aeadOpen(o[1], 0L, h, tag1) == null) {
             return cat(hello, frame(cat([1] as byte[], "Handshake MAC failure".bytes)))
         }
@@ -93,7 +94,7 @@ class FakeRatgdo {
     byte[] respond(int type) {
         switch (type) {
             case 1: return msg(2, cat(d.pbVarint(1, 1), d.pbVarint(2, 19), d.pbString(3, "2026.10.0"), d.pbString(4, "nexus-gate")))
-            case 9: return msg(10, cat(d.pbString(2, "nexus-gate"), d.pbString(3, "BC:FF:4D:90:11:48"), d.pbString(4, "2026.10.0"),
+            case 9: return msg(10, cat(d.pbString(2, serverName), d.pbString(3, "BC:FF:4D:90:11:48"), d.pbString(4, "2026.10.0"),
                                        d.pbString(6, "esp8266"), d.pbString(8, "ratgdo.esphome"), d.pbString(9, "v25iboard"), d.pbString(13, "Nexus Gate")))
             case 11:
                 ByteArrayOutputStream out = new ByteArrayOutputStream()
@@ -240,7 +241,7 @@ check("entities map by domain and name; unrelated ones are ignored") {
     World w = connected(root, KEY)
     Map m = w.d.MEM[w.dev.idAsLong]
     assert m.roles == [door: DOOR, light: LIGHT, remotes: LOCK, motion: MOTION, obstruction: OBST, motor: MOTOR,
-                       openings: OPENINGS, toggleButton: TOGGLE, queryButton: QUERY]
+                       wallButton: BTN_SENSOR, openings: OPENINGS, toggleButton: TOGGLE, queryButton: QUERY]
     assert w.d.entityRole("binary_sensor", "dry_contact_open dry contact open") == null
     assert w.d.entityRole("sensor", "paired_devices_total paired devices") == null
     assert w.d.entityRole("button", "query_openings query openings") == null
@@ -512,7 +513,7 @@ check("ratgdo32 Disco and encoder entities: vehicle presence, arriving/leaving, 
     w.dev.updated(); w.hub.settle(); w.pump()
     Map roles = w.d.MEM[w.dev.idAsLong].roles
     assert roles.vehicle == 0x2001 && roles.arriving == 0x2002 && roles.leaving == 0x2003 && roles.manual == 0x2004
-    assert roles.openings == OPENINGS && roles.motion == MOTION && roles.size() == 13
+    assert roles.openings == OPENINGS && roles.motion == MOTION && roles.size() == 14
     def bin = { int k, int v -> w.push(21, d.concat(d.pbFixed32(1, k), d.pbVarint(2, v))) }
     bin(0x2001, 1); assert w.dev.current.presence == "present"
     bin(0x2002, 1); assert w.dev.current.vehicleMotion == "arriving"
@@ -539,7 +540,7 @@ check("entity names from every supported firmware map to the right role, with no
         "binary_sensor|garage_door_obstruction_sensor garage door obstruction sensor": "obstruction",
         "binary_sensor|garage_motion_sensor garage motion sensor": "motion",
         "binary_sensor|garage_door_motor garage door motor": "motor",
-        "binary_sensor|garage_button garage button": null,
+        "binary_sensor|garage_button garage button": "wallButton",
         "binary_sensor|synced synced": null,
         "binary_sensor|vehicle_parked vehicle parked": "vehicle",
         "binary_sensor|car_parked car parked": "vehicle",
@@ -582,7 +583,7 @@ check("Gelidus SecplusGDO end to end: its entity list, states, and Toggle withou
     w.rat.initialStates = [[22, d.pbFixed32(1, 0x3009)], [21, d.concat(d.pbFixed32(1, 0x3006), d.pbVarint(2, 1))],
                            [25, d.concat(d.pbFixed32(1, 0x300c), d.pbFloat(2, 42f))]]
     w.dev.updated(); w.hub.settle(); w.pump()
-    assert w.d.MEM[w.dev.idAsLong].roles == [motor: 0x3003, obstruction: 0x3004, motion: 0x3005, vehicle: 0x3006,
+    assert w.d.MEM[w.dev.idAsLong].roles == [wallButton: 0x3002, motor: 0x3003, obstruction: 0x3004, motion: 0x3005, vehicle: 0x3006,
         arriving: 0x3007, leaving: 0x3008, door: 0x3009, light: 0x300a, remotes: 0x300b, openings: 0x300c]
     assert w.dev.current.subMap(["networkStatus", "door", "presence", "openings"]) ==
         [networkStatus: "online", door: "closed", presence: "present", openings: 42L]
@@ -619,6 +620,60 @@ check("while the door moves, position is reported every 10%; the stop is exact")
     assert pos.size() <= 11 && pos.last() == 100L && w.dev.current.door == "open"
     w.push(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, 0.43f)), d.pbVarint(5, 0)))
     assert w.dev.current.position == 43L
+}
+
+check("Save and uninstall say goodbye (DisconnectRequest) before closing; errors just close") {
+    World w = connected(root, KEY)
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.rat.received.collect { it[0] }.contains(5)
+    assert w.dev.current.networkStatus == "online"
+    int n = w.rat.received.size()
+    w.dev.uninstalled(); w.hub.settle(); w.pump()
+    assert w.rat.received.drop(n).collect { it[0] } == [5]
+    World e = connected(root, KEY)
+    e.dev.socketStatus("receive error: Stream closed"); e.hub.settle()
+    assert !e.rat.received.collect { it[0] }.contains(5)
+}
+
+check("another ESPHome device at the ratgdo's address is named, not mistaken for a wrong key; Save re-learns") {
+    World w = connected(root, KEY)
+    assert w.dev.data.esphomeName == "nexus-gate"
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities, serverName: "bt-proxy-1")
+    w.dev.connectNow(); w.hub.settle(); w.pump()
+    assert w.dev.current.networkStatus == "offline" && w.dev.current.lastError.contains("'bt-proxy-1'")
+    assert w.dev.current.lastError.contains("'nexus-gate'") && w.rat.received.isEmpty(), "nothing sent after the hello"
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.dev.current.networkStatus == "online" && w.dev.data.esphomeName == "bt-proxy-1"
+}
+
+check("a wrong key names the device that rejected it") {
+    World w = world(root, KEY)
+    w.rat.wrongKey = true
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.dev.current.lastError == "Wrong API key: 'nexus-gate' at 172.16.214.150 rejected it"
+}
+
+check("healthStatus: online when connected, offline when not; a reconnect in progress keeps it") {
+    World w = connected(root, KEY)
+    assert w.dev.current.healthStatus == "online"
+    w.dev.socketStatus("receive error: Stream closed"); w.hub.settle()
+    assert w.dev.current.healthStatus == "offline"
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities, silent: true)
+    w.dev.connectNow(); w.hub.settle(); w.pump()
+    assert w.dev.current.networkStatus == "connecting" && w.dev.current.healthStatus == "offline"
+}
+
+check("the wall button: each press is a pushed event, the release is not; push() never moves the door") {
+    World w = connected(root, KEY)
+    Class d = w.d
+    assert w.dev.current.numberOfButtons == 1
+    def btn = { int v -> w.push(21, d.concat(d.pbFixed32(1, BTN_SENSOR), d.pbVarint(2, v))) }
+    btn(1); btn(0); btn(1); btn(0)
+    List p = w.dev.events.findAll { it.name == "pushed" }
+    assert p.size() == 2 && p.every { it.value == 1 && it.isStateChange && it.type == "physical" }
+    int sent = w.rat.received.size()
+    w.dev.push(1); w.pump()
+    assert w.dev.events.findAll { it.name == "pushed" }.last().type == "digital" && w.rat.received.size() == sent
 }
 
 Check.finish()
