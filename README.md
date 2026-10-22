@@ -38,6 +38,7 @@ nothing on the ratgdo changes.
 | `vehicleMotion`: arriving, leaving or none | Vehicle arriving and leaving (ratgdo32 Disco, Gelidus ultrasound) |
 | `manuallyOperated`: yes or no | Manually Operated (with the ratgdo encoder) |
 | `pushed`: button 1, each time the opener's wall button is pressed | Button |
+| **Restart**: reboots the ratgdo; the driver reconnects by itself in about 10 s | Restart |
 | `networkStatus`: connecting, online, offline or bad key. `lastError` says why. `healthStatus`: Hubitat's standard online or offline | The connection |
 
 **Boards:** ratgdo v2.5i, ratgdo32 and ratgdo32 Disco on ESPHome firmware,

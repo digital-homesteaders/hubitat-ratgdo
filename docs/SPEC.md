@@ -104,6 +104,7 @@ Door", "Garage Motion Sensor", "Garage Door Openings") still lines up.
 | binary_sensor button / garage button | `pushed` 1 on each press (not the release); `numberOfButtons` 1. `push()` records a press only and never moves the door |
 | button "Toggle door" | used by `toggle` when present |
 | button "Query status" | used by `refresh` when present |
+| button "Restart" | `restart` |
 
 Door state: `current_operation` 1 means opening and 2 means closing.
 Otherwise position 0 is `closed` and any other position is `open`. The contact

@@ -241,7 +241,8 @@ check("entities map by domain and name; unrelated ones are ignored") {
     World w = connected(root, KEY)
     Map m = w.d.MEM[w.dev.idAsLong]
     assert m.roles == [door: DOOR, light: LIGHT, remotes: LOCK, motion: MOTION, obstruction: OBST, motor: MOTOR,
-                       wallButton: BTN_SENSOR, openings: OPENINGS, toggleButton: TOGGLE, queryButton: QUERY]
+                       wallButton: BTN_SENSOR, openings: OPENINGS, toggleButton: TOGGLE, queryButton: QUERY,
+                       restartButton: RESTART]
     assert w.d.entityRole("binary_sensor", "dry_contact_open dry contact open") == null
     assert w.d.entityRole("sensor", "paired_devices_total paired devices") == null
     assert w.d.entityRole("button", "query_openings query openings") == null
@@ -302,6 +303,7 @@ check("commands: the exact API message for each") {
     w.dev.lightOn(); f = last(32); assert f[1] == LIGHT && f[2] == 1L && f[3] == 1L
     w.dev.lightOff(); f = last(32); assert f[2] == 1L && f[3] == 0L
     w.dev.lockRemotes(); f = last(60); assert f[1] == LOCK && f[2] == 1L
+    w.dev.restart(); f = last(62); assert f[1] == RESTART
     w.dev.unlockRemotes(); f = last(60); assert f[1] == LOCK && (f[2] ?: 0L) == 0L
     int before = w.rat.received.size()
     w.dev.refresh(); w.pump()
@@ -518,7 +520,7 @@ check("ratgdo32 Disco and encoder entities: vehicle presence, arriving/leaving, 
     w.dev.updated(); w.hub.settle(); w.pump()
     Map roles = w.d.MEM[w.dev.idAsLong].roles
     assert roles.vehicle == 0x2001 && roles.arriving == 0x2002 && roles.leaving == 0x2003 && roles.manual == 0x2004
-    assert roles.openings == OPENINGS && roles.motion == MOTION && roles.size() == 14
+    assert roles.openings == OPENINGS && roles.motion == MOTION && roles.size() == 15
     def bin = { int k, int v -> w.push(21, d.concat(d.pbFixed32(1, k), d.pbVarint(2, v))) }
     bin(0x2001, 1); assert w.dev.current.presence == "present"
     bin(0x2002, 1); assert w.dev.current.vehicleMotion == "arriving"
@@ -538,6 +540,8 @@ check("entity names from every supported firmware map to the right role, with no
         "sensor|encoder encoder": null,
         "sensor|wifi_signal wifi signal": null,
         "button|sync sync": null,
+        "button|restart restart": "restartButton",
+        "button|safe_mode_boot safe mode boot": null,
         // Gelidus GRGDO with SecplusGDO firmware
         "cover|garage_door garage door": "door",
         "light|garage_door_light garage door light": "light",
@@ -679,6 +683,18 @@ check("the wall button: each press is a pushed event, the release is not; push()
     int sent = w.rat.received.size()
     w.dev.push(1); w.pump()
     assert w.dev.events.findAll { it.name == "pushed" }.last().type == "digital" && w.rat.received.size() == sent
+}
+
+check("restart: the ratgdo's Restart button, then the driver reconnects when it says goodbye") {
+    World w = connected(root, KEY)
+    w.dev.restart(); w.pump()
+    assert w.lastSent(62)[1][1] == RESTART
+    w.push(5, new byte[0])                         // ESPHome says goodbye as it reboots
+    assert w.dev.current.networkStatus == "offline"
+    assert w.dev.driver.callsNamed("runIn").last()[1..2] == [5, "connectNow"]
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities)
+    w.dev.connectNow(); w.hub.settle(); w.pump()
+    assert w.dev.current.networkStatus == "online"
 }
 
 Check.finish()

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Restart**: reboots the ratgdo with its own Restart button; the driver reconnects by itself.
 - A door stopped part-way logs its position: "door is open (25%)".
 - **Preset Position**: a 0, 25, 50, 75 or 100% dropdown next to Set Position, like Home Assistant's door buttons.
 - `lastError` reads "none" once connected, instead of an empty value that the device page shows as "null".

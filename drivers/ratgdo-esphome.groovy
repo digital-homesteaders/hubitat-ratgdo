@@ -87,6 +87,7 @@ metadata {
         command "lightOff"
         command "lockRemotes"
         command "unlockRemotes"
+        command "restart"
     }
     preferences {
         input "host", "text", title: "ratgdo IP address", required: true,
@@ -164,6 +165,14 @@ void lightOn() { lightState(true) }
 void lightOff() { lightState(false) }
 void lockRemotes() { lockCommand(1) }
 void unlockRemotes() { lockCommand(0) }
+
+/** Reboot the ratgdo with its own Restart button; the driver reconnects when it's back (about 10 s). */
+void restart() {
+    Integer k = keyFor("restartButton")
+    if (k == null) return
+    log.info "${device.displayName}: restarting the ratgdo"
+    sendApi(BUTTON_CMD, pbFixed32(1, k))
+}
 
 void refresh() {
     if (MEM[device.idAsLong] == null && host && apiKey) { connectNow(); return }   // offline: try now
@@ -427,6 +436,7 @@ static String entityRole(String domain, String words) {
         case "button":
             if (words.contains("toggle")) return "toggleButton"
             if (words.contains("query_status") || words.contains("query status")) return "queryButton"
+            if (words.contains("restart")) return "restartButton"
             return null
     }
     return null
