@@ -33,15 +33,21 @@ against small stand-ins for the hub, then runs:
   one during a new handshake); new driver code clearing memory; refresh while
   offline; and that no key material reaches `state`.
 
-## Needs a real hub
+## Confirmed on a real hub
 
-Not yet confirmed (0.1.0):
+2026-10-22, Hubitat C-8, ratgdo v2.5i (ESP8266, ESPHome firmware, encrypted):
 
-- [ ] The sandbox accepts every import (`MessageDigest`, `Mac`,
-      `SecureRandom`, `BigInteger`, `ByteArrayOutputStream`) and the
-      `interfaces.rawSocket` calls with `byteInterface: true`.
+- [x] The sandbox accepts every import (`MessageDigest`, `Mac`, `SecureRandom`,
+      `BigInteger`, `ByteArrayOutputStream`) and `interfaces.rawSocket` with
+      `byteInterface: true`.
+- [x] The encrypted handshake with the real API key, the hello, and the entity
+      list: "connected (door, light, motion, motor, obstruction, openings,
+      queryButton, remotes, toggleButton)".
+
+## Still needs a real hub
+
 - [ ] Handshake time on a C-7 and a C-8 (about 4 ms for both X25519 steps on an M-series Mac; each 40-byte message about 0.04 ms).
-- [ ] Connects to a real ratgdo v2.5i (ESPHome 2026.x) alongside Home Assistant.
+- [ ] Stays connected alongside Home Assistant for a day or more.
 - [ ] Open, close, stop, toggle, set position, light, lock remotes.
 - [ ] Motion, obstruction and openings update live.
 - [ ] Reconnects after a ratgdo reboot, a Wi-Fi drop and a hub reboot.
