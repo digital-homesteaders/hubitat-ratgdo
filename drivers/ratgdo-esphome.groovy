@@ -116,7 +116,10 @@ void updated() {
     initialize()
 }
 
-void uninstalled() { disconnect(true) }
+void uninstalled() {
+    disconnect(true)
+    SENT.remove(device.idAsLong)
+}
 
 void initialize() {
     disconnect(true)

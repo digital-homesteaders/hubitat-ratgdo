@@ -640,6 +640,7 @@ check("Save and uninstall say goodbye (DisconnectRequest) before closing; errors
     int n = w.rat.received.size()
     w.dev.uninstalled(); w.hub.settle(); w.pump()
     assert w.rat.received.drop(n).collect { it[0] } == [5]
+    assert !w.d.SENT.containsKey(w.dev.idAsLong) && !w.d.MEM.containsKey(w.dev.idAsLong), "nothing left in memory"
     World e = connected(root, KEY)
     e.dev.socketStatus("receive error: Stream closed"); e.hub.settle()
     assert !e.rat.received.collect { it[0] }.contains(5)
