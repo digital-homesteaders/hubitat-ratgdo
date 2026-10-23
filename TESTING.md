@@ -46,6 +46,10 @@ against small stand-ins for the hub, then runs:
 - [x] Open, Stop partway and Close from Hubitat; the opener's own light
       reported on and off.
 - [x] Live updates when the door is opened and closed from the myQ app.
+- [x] Restart: "restarting the ratgdo", then connected again 13 s later.
+- [x] Found on the hub: after an apparent fresh start at 03:26, a leftover frame
+      ended the next connection ("unknown encryption protocol"); it recovered in
+      9 s, and is fixed under Unreleased.
 - [x] Set Position and Preset Position: 25, 50, 75, 100 then 0 each stopped
       where asked, about 3.5 s per 25% (log: "door is open (25%)" ...), and the
       position was reported at each stop.
@@ -61,7 +65,7 @@ against small stand-ins for the hub, then runs:
 - [ ] A wall-button press gives `pushed` 1 (physical); `healthStatus` online.
 - [ ] Toggle, Light On/Off, Lock/Unlock Remotes.
 - [ ] Motion, obstruction and openings update live.
-- [ ] Reconnects after a ratgdo reboot, a Wi-Fi drop and a hub reboot.
+- [ ] Reconnects after a Wi-Fi drop and a hub reboot (a ratgdo reboot is confirmed).
 - [ ] ratgdo32, ratgdo32 Disco (vehicle presence, arriving and leaving) and the encoder (`manuallyOperated`, exact position).
 - [ ] A Gelidus GRGDO board with SecplusGDO firmware (after adding an API key).
 - [ ] Older ESPHome firmware (before 2026.1, which still expects the login message).

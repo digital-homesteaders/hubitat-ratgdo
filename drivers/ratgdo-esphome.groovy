@@ -234,6 +234,8 @@ void connectNow() {
     Map m = [phase: "hello", buf: new byte[0], entities: [:], roles: [:], lastRx: now()]
     MEM[device.idAsLong] = m
     status("connecting", null)
+    // New code or a hub restart empties MEM but can leave the old socket open: close it regardless.
+    try { interfaces.rawSocket.close() } catch (ignored) { }
     try {
         interfaces.rawSocket.connect([byteInterface: true], host as String, p)
     } catch (e) {
@@ -343,7 +345,11 @@ void parse(String hex) {
 private boolean onFrame(Map m, byte[] f) {
     switch (m.phase) {
         case "hello":
-            if (f.length == 0 || f[0] != 1) { reconnectLater("The ratgdo offered an unknown encryption protocol"); return false }
+            if (f.length == 0 || f[0] != 1) {
+                // Most likely left over from the previous connection; the handshake timeout covers a real fault.
+                logDebug "ignored a ${f.length}-byte frame while waiting for the ratgdo's hello"
+                return true
+            }
             int end = 1
             while (end < f.length && f[end] != 0) end++
             m.name = new String(f, 1, end - 1, "UTF-8")

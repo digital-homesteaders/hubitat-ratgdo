@@ -758,4 +758,17 @@ check("review: a barely-open door logs 1%, not 0%") {
     assert w.dev.driver.log.at("info").last() == "Nexus Gate door is open (1%)"
 }
 
+check("seen on the C-8 at 03:27: after a fresh start, a frame left over from the old connection is ignored, not fatal") {
+    World w = connected(root, KEY)
+    w.d.MEM.clear()                                 // a hub restart or new code: memory gone, socket maybe open
+    byte[] stale = w.rat.msg(24, w.d.concat(w.d.pbFixed32(1, LIGHT), w.d.pbVarint(2, 1)))   // old session's frame
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities)
+    int closes = w.dev.driver.callsNamed("socket.close").size()
+    w.dev.connectNow(); w.hub.settle()
+    assert w.dev.driver.callsNamed("socket.close").size() == closes + 1, "the old socket is closed first"
+    w.deliver(stale); w.hub.settle()                // arrives before the new hello
+    w.pump()
+    assert w.dev.current.networkStatus == "online" && !w.dev.driver.log.at("warn")
+}
+
 Check.finish()

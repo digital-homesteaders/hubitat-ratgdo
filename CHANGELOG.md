@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- After a hub restart or new code, the old socket is closed before reconnecting, and a leftover frame before the ratgdo's hello is ignored instead of ending the connection (seen on a C-8 as "unknown encryption protocol").
 - Fixed: a failed reconnect could leave `networkStatus` on "connecting" (and the watchdog then retried every minute, ignoring the backoff). Status changes in one execution all land now.
 - Restart is quiet: "connecting" with lastError "Restarting", no warning, no backoff, reconnect after 15 s. It never picks a safe-mode button.
 - A different ESPHome device at the address is reported once and retried every 30 minutes, not every 5.
