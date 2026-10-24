@@ -21,7 +21,7 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 @Field static final String DRIVER_NAME = "ratgdo (ESPHome)"
-@Field static final String DRIVER_VERSION = "0.1.0"
+@Field static final String DRIVER_VERSION = "0.2.0"
 
 // Per-device session: socket phase, Noise keys and nonces, receive buffer and
 // entity map. Kept out of state so keys never reach the database.

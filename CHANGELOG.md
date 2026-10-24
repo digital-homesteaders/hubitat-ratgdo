@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-10-23)
 
 - **Motion stays active for** a chosen time after the last motion (default 30 s). The ratgdo reports motion as 3-second pulses, which made a stream of active/inactive events while someone moved around; choose "As the ratgdo reports it" for the old behaviour.
 - After a hub restart or new code, the old socket is closed before reconnecting, and a leftover frame before the ratgdo's hello is ignored instead of ending the connection (seen on a C-8 as "unknown encryption protocol").
