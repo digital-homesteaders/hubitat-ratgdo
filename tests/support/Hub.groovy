@@ -57,7 +57,9 @@ class Hub {
     void advance(long ms) { clockOffset += ms }
 
     /** End of an execution: every script's state goes through JSON, as on the hub. */
-    void settle() { scripts.each { it.persistState() } }
+    void settle() {
+        scripts.each { it.persistState(); it.device?.commit() }
+    }
 
     /** A device running the named driver. */
     FakeDevice device(String driverName, String dni, Map props = [:], def parent = null) {
@@ -120,6 +122,7 @@ abstract class HubitatScript extends Script {
     void runIn(Number secs, String handler, Map opts = [:]) { calls << ["runIn", secs, handler, opts] }
     void runEvery1Minute(String handler) { calls << ["runEvery1Minute", handler] }
     void unschedule(String handler = null) { calls << ["unschedule", handler] }
+    void pauseExecution(Number ms) { calls << ["pauseExecution", ms] }
 
     // ---- raw socket (drivers)
     FakeInterfaces getInterfaces() {
@@ -213,17 +216,26 @@ class FakeDevice {
     Map<String, String> data = [:]
     Map<String, Object> current = [:]
     List<Map> events = []
+    List<Map> pending = []   // like Hubitat, currentValue sees an event only after the execution ends (Hub.settle)
 
     long getIdAsLong() { id }
     String getDisplayName() { label ?: name }
     String getDataValue(String k) { data[k] }
     void updateDataValue(String k, def v) { data[k] = v?.toString() }
+    void removeDataValue(String k) { data.remove(k) }
     def currentValue(String attr, boolean skipCache = false) { current[attr] }
     void updateSetting(String k, Map v) { driver.settings[k] = v.type == "bool" ? v.value == "true" : v.value }
 
     void applyEvent(Map e) {
+        // The hub itself drops an event whose value matches the committed one.
+        if (!e.isStateChange && current.containsKey(e.name as String) && current[e.name as String]?.toString() == e.value?.toString()) return
         events << new LinkedHashMap(e)
-        current[e.name as String] = e.value
+        pending << e
+    }
+
+    void commit() {
+        pending.each { current[it.name as String] = it.value }
+        pending.clear()
     }
 
     /** The latest event for an attribute. */

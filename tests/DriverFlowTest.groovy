@@ -16,7 +16,8 @@ String KEY = "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="
 class FakeRatgdo {
     Class d
     byte[] psk
-    boolean wrongKey, plaintext, silent
+    boolean wrongKey, plaintext, silent, tamperAfterList
+    String serverName = "nexus-gate"
     byte[] rxBuf = new byte[0]
     boolean gotHello
     Map hs
@@ -69,7 +70,7 @@ class FakeRatgdo {
         byte[] re = d.slice(msg1, 0, 32)
         h = d.sha256(cat(h, re)); o = d.hkdf(ck, re, 2); ck = o[0]
         byte[] tag1 = d.slice(msg1, 32, 48)
-        byte[] hello = frame(cat([1] as byte[], "nexus-gate\u0000BCFF4D901148\u0000".bytes))
+        byte[] hello = frame(cat([1] as byte[], (serverName + "\u0000BCFF4D901148\u0000").bytes))
         if (wrongKey || d.aeadOpen(o[1], 0L, h, tag1) == null) {
             return cat(hello, frame(cat([1] as byte[], "Handshake MAC failure".bytes)))
         }
@@ -93,12 +94,13 @@ class FakeRatgdo {
     byte[] respond(int type) {
         switch (type) {
             case 1: return msg(2, cat(d.pbVarint(1, 1), d.pbVarint(2, 19), d.pbString(3, "2026.10.0"), d.pbString(4, "nexus-gate")))
-            case 9: return msg(10, cat(d.pbString(2, "nexus-gate"), d.pbString(3, "BC:FF:4D:90:11:48"), d.pbString(4, "2026.10.0"),
+            case 9: return msg(10, cat(d.pbString(2, serverName), d.pbString(3, "BC:FF:4D:90:11:48"), d.pbString(4, "2026.10.0"),
                                        d.pbString(6, "esp8266"), d.pbString(8, "ratgdo.esphome"), d.pbString(9, "v25iboard"), d.pbString(13, "Nexus Gate")))
             case 11:
                 ByteArrayOutputStream out = new ByteArrayOutputStream()
                 entities.each { k, v -> out.write(msg(v[0] as int, v[1] as byte[])) }
                 out.write(msg(19, new byte[0]))
+                if (tamperAfterList) { byte[] bad = msg(24, new byte[0]); bad[bad.length - 1] ^= 1; out.write(bad) }
                 return out.toByteArray()
             case 20:
                 ByteArrayOutputStream out = new ByteArrayOutputStream()
@@ -219,7 +221,7 @@ check("connects: socket, encrypted handshake, hello with the empty login, device
     assert w.sentTypes() == [1, 3, 9, 11, 20]
     assert new String(w.rat.received[0][1][1] as byte[], "UTF-8").startsWith("Hubitat ratgdo")
     assert w.rat.received[0][1][2] == 1L && w.rat.received[0][1][3] == 10L
-    assert w.dev.current.networkStatus == "online"
+    assert w.dev.current.networkStatus == "online" && w.dev.current.lastError == "none"
     assert w.dev.data.friendlyName == "Nexus Gate" && w.dev.data.esphomeVersion == "2026.10.0" && w.dev.data.model == "esp8266"
     assert !w.dev.data.values().any { it.contains("BC:FF") }, "the MAC address is not kept"
     assert w.dev.current.subMap(["door", "contact", "position", "light", "remotes", "motion", "obstruction", "motor", "openings"]) ==
@@ -240,7 +242,8 @@ check("entities map by domain and name; unrelated ones are ignored") {
     World w = connected(root, KEY)
     Map m = w.d.MEM[w.dev.idAsLong]
     assert m.roles == [door: DOOR, light: LIGHT, remotes: LOCK, motion: MOTION, obstruction: OBST, motor: MOTOR,
-                       openings: OPENINGS, toggleButton: TOGGLE, queryButton: QUERY]
+                       wallButton: BTN_SENSOR, openings: OPENINGS, toggleButton: TOGGLE, queryButton: QUERY,
+                       restartButton: RESTART]
     assert w.d.entityRole("binary_sensor", "dry_contact_open dry contact open") == null
     assert w.d.entityRole("sensor", "paired_devices_total paired devices") == null
     assert w.d.entityRole("button", "query_openings query openings") == null
@@ -253,10 +256,13 @@ check("door states: opening, closing, partly open, open, back to closed") {
     def door = { float pos, int op -> w.push(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, pos)), d.pbVarint(5, op))) }
     door(0.1f, 1); assert w.dev.current.door == "opening" && w.dev.current.contact == "open" && w.dev.current.position == 10L
     door(0.4f, 0); assert w.dev.current.door == "open" && w.dev.current.position == 40L
-    door(1f, 0);   assert w.dev.current.door == "open" && w.dev.current.position == 100L
+    assert w.dev.driver.log.at("info").last() == "Nexus Gate door is open (40%)"
+    door(0.6f, 1); door(1f, 0)
+    assert w.dev.current.door == "open" && w.dev.current.position == 100L
+    assert w.dev.driver.log.at("info").last() == "Nexus Gate door is open"
     door(0.9f, 2); assert w.dev.current.door == "closing" && w.dev.current.contact == "open"
     door(0f, 0);   assert w.dev.current.door == "closed" && w.dev.current.contact == "closed" && w.dev.current.position == 0L
-    assert w.dev.driver.log.at("info").count { it.contains("door is") } == 5
+    assert w.dev.driver.log.at("info").count { it.contains("door is") } == 7   // incl. "closed" on connect
 }
 
 check("sensor states: light, motion, obstruction, motor, remotes, openings; missing states are skipped") {
@@ -276,6 +282,21 @@ check("sensor states: light, motion, obstruction, motor, remotes, openings; miss
     assert w.dev.current.motion == "active" && w.dev.current.remotes == "locked"
 }
 
+check("motion: 3-second pulses are held active until no pulse for the hold time; 0 passes them through") {
+    World w = connected(root, KEY)
+    Class d = w.d
+    def pulse = { int on -> w.push(21, d.concat(d.pbFixed32(1, MOTION), d.pbVarint(2, on))) }
+    pulse(1); pulse(0); pulse(1); pulse(0)
+    assert w.dev.current.motion == "active"
+    assert w.dev.events.count { it.name == "motion" && it.value == "active" } == 1, "one active, not a stream of them"
+    assert w.dev.driver.callsNamed("runIn").findAll { it[2] == "motionClear" }*.getAt(1) == [30, 30]
+    w.dev.motionClear(); w.hub.settle()
+    assert w.dev.current.motion == "inactive"
+    w.dev.driver.settings.motionHold = "0"
+    pulse(1); assert w.dev.current.motion == "active"
+    pulse(0); assert w.dev.current.motion == "inactive"
+}
+
 check("unchanged values send no new events") {
     World w = connected(root, KEY)
     int n = w.dev.events.size()
@@ -291,11 +312,14 @@ check("commands: the exact API message for each") {
     w.dev.close(); f = last(30); assert f[4] == 1L && Float.intBitsToFloat(f[5]) == 0f
     w.dev.setPosition(37); f = last(30); assert Math.abs(Float.intBitsToFloat(f[5]) - 0.37f) < 1e-6
     w.dev.setPosition(150); f = last(30); assert Float.intBitsToFloat(f[5]) == 1f
+    w.dev.presetPosition("25"); f = last(30); assert Float.intBitsToFloat(f[5]) == 0.25f
+    w.dev.presetPosition("0"); f = last(30); assert Float.intBitsToFloat(f[5]) == 0f
     w.dev.stop(); f = last(30); assert f[1] == DOOR && f[8] == 1L && f[4] == null
     w.dev.toggle(); f = last(62); assert f[1] == TOGGLE
     w.dev.lightOn(); f = last(32); assert f[1] == LIGHT && f[2] == 1L && f[3] == 1L
     w.dev.lightOff(); f = last(32); assert f[2] == 1L && f[3] == 0L
     w.dev.lockRemotes(); f = last(60); assert f[1] == LOCK && f[2] == 1L
+    w.dev.restart(); f = last(62); assert f[1] == RESTART
     w.dev.unlockRemotes(); f = last(60); assert f[1] == LOCK && (f[2] ?: 0L) == 0L
     int before = w.rat.received.size()
     w.dev.refresh(); w.pump()
@@ -479,6 +503,288 @@ check("refresh while offline connects straight away") {
     w.dev.driver.interfaces.rawSocket.refuse = false
     w.dev.refresh(); w.hub.settle(); w.pump()
     assert w.dev.current.networkStatus == "online"
+}
+
+check("the port is text (no '6,053' on the settings page); numbers from older saves and commas still work") {
+    [["6053", 6053], [6053L, 6053], ["6,053", 6053], [" 7000 ", 7000], [null, 6053]].each { v, want ->
+        World w = world(root, KEY)
+        w.dev.driver.settings.port = v
+        w.dev.updated(); w.hub.settle()
+        assert w.dev.driver.callsNamed("socket.connect")[0][2] == want, "port ${v}"
+    }
+    World w = world(root, KEY)
+    w.dev.driver.settings.port = "60a"
+    w.dev.updated(); w.hub.settle()
+    assert !w.dev.driver.callsNamed("socket.connect") && w.dev.current.lastError.contains("API port")
+}
+
+check("ratgdo32 Disco and encoder entities: vehicle presence, arriving/leaving, manually operated; extras ignored") {
+    World w = world(root, KEY)
+    Class d = w.d
+    def ent = { int type, int k, String objId, String name ->
+        w.rat.entities[k] = [type, d.concat(d.concat(d.pbString(1, objId), d.pbFixed32(2, k)), d.pbString(3, name))]
+    }
+    ent(12, 0x2001, "vehicle_detected", "Vehicle detected")
+    ent(12, 0x2002, "vehicle_arriving", "Vehicle arriving")
+    ent(12, 0x2003, "vehicle_leaving", "Vehicle leaving")
+    ent(12, 0x2004, "manually_operated", "Manually Operated")
+    ent(16, 0x2005, "vehicle_distance_actual_filtered", "Vehicle distance actual filtered")
+    ent(16, 0x2006, "voltage", "Voltage")
+    ent(16, 0x2007, "encoder", "Encoder")
+    ent(17, 0x2008, "laser", "LASER")
+    ent(61, 0x2009, "encoder_calibration_reset", "Encoder Calibration Reset")
+    w.dev.updated(); w.hub.settle(); w.pump()
+    Map roles = w.d.MEM[w.dev.idAsLong].roles
+    assert roles.vehicle == 0x2001 && roles.arriving == 0x2002 && roles.leaving == 0x2003 && roles.manual == 0x2004
+    assert roles.openings == OPENINGS && roles.motion == MOTION && roles.size() == 15
+    def bin = { int k, int v -> w.push(21, d.concat(d.pbFixed32(1, k), d.pbVarint(2, v))) }
+    bin(0x2001, 1); assert w.dev.current.presence == "present"
+    bin(0x2002, 1); assert w.dev.current.vehicleMotion == "arriving"
+    bin(0x2002, 0); assert w.dev.current.vehicleMotion == "none"
+    bin(0x2003, 1); assert w.dev.current.vehicleMotion == "leaving"
+    bin(0x2001, 0); bin(0x2003, 0); assert w.dev.current.presence == "not present" && w.dev.current.vehicleMotion == "none"
+    bin(0x2004, 1); assert w.dev.current.manuallyOperated == "yes"
+}
+
+check("entity names from every supported firmware map to the right role, with no false matches") {
+    Class d = new Hub(root).compile(new File(root, "drivers/ratgdo-esphome.groovy"))
+    Map want = [
+        // ratgdo dry-contact and Security+ 1.0 builds
+        "binary_sensor|open_limit_switch open limit switch": null,
+        "binary_sensor|close_limit_switch close limit switch": null,
+        "binary_sensor|dry_contact_light dry contact light": null,
+        "sensor|encoder encoder": null,
+        "sensor|wifi_signal wifi signal": null,
+        "button|sync sync": null,
+        "button|restart restart": "restartButton",
+        "button|safe_mode_boot safe mode boot": null,
+        // Gelidus GRGDO with SecplusGDO firmware
+        "cover|garage_door garage door": "door",
+        "light|garage_door_light garage door light": "light",
+        "lock|lock_remotes lock remotes": "remotes",
+        "binary_sensor|garage_door_obstruction_sensor garage door obstruction sensor": "obstruction",
+        "binary_sensor|garage_motion_sensor garage motion sensor": "motion",
+        "binary_sensor|garage_door_motor garage door motor": "motor",
+        "binary_sensor|garage_button garage button": "wallButton",
+        "binary_sensor|synced synced": null,
+        "binary_sensor|vehicle_parked vehicle parked": "vehicle",
+        "binary_sensor|car_parked car parked": "vehicle",
+        "binary_sensor|vehicle_arriving vehicle arriving": "arriving",
+        "sensor|garage_door_openings garage door openings": "openings",
+        "sensor|vehicle_distance vehicle distance": null,
+        "button|factory_reset factory reset": null,
+        "button|re-sync re-sync": null,
+        "button|reset_door_timings reset door timings": null,
+    ]
+    want.each { k, role ->
+        List p = k.tokenize("|")
+        assert d.entityRole(p[0], p[1]) == role, k
+    }
+}
+
+check("Gelidus SecplusGDO end to end: its entity list, states, and Toggle without a Toggle button stops a moving door") {
+    World w = world(root, KEY)
+    Class d = w.d
+    w.rat.entities.clear()
+    def ent = { int type, int k, String objId, String name ->
+        w.rat.entities[k] = [type, d.concat(d.concat(d.pbString(1, objId), d.pbFixed32(2, k)), d.pbString(3, name))]
+    }
+    ent(12, 0x3001, "synced", "Synced")
+    ent(12, 0x3002, "garage_button", "Garage Button")
+    ent(12, 0x3003, "garage_door_motor", "Garage Door Motor")
+    ent(12, 0x3004, "garage_door_obstruction_sensor", "Garage Door Obstruction Sensor")
+    ent(12, 0x3005, "garage_motion_sensor", "Garage Motion Sensor")
+    ent(12, 0x3006, "vehicle_parked", "Vehicle parked")
+    ent(12, 0x3007, "vehicle_arriving", "Vehicle arriving")
+    ent(12, 0x3008, "vehicle_leaving", "Vehicle leaving")
+    ent(13, 0x3009, "garage_door", "Garage Door")
+    ent(15, 0x300a, "garage_door_light", "Garage Door Light")
+    ent(58, 0x300b, "lock_remotes", "Lock remotes")
+    ent(16, 0x300c, "garage_door_openings", "Garage Door Openings")
+    ent(16, 0x300d, "vehicle_distance", "Vehicle Distance")
+    ent(61, 0x300e, "re-sync", "Re-sync")
+    ent(61, 0x300f, "factory_reset", "Factory Reset")
+    ent(17, 0x3010, "toggle_only", "Toggle Only")
+    w.rat.initialStates = [[22, d.pbFixed32(1, 0x3009)], [21, d.concat(d.pbFixed32(1, 0x3006), d.pbVarint(2, 1))],
+                           [25, d.concat(d.pbFixed32(1, 0x300c), d.pbFloat(2, 42f))]]
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.d.MEM[w.dev.idAsLong].roles == [wallButton: 0x3002, motor: 0x3003, obstruction: 0x3004, motion: 0x3005, vehicle: 0x3006,
+        arriving: 0x3007, leaving: 0x3008, door: 0x3009, light: 0x300a, remotes: 0x300b, openings: 0x300c]
+    assert w.dev.current.subMap(["networkStatus", "door", "presence", "openings"]) ==
+        [networkStatus: "online", door: "closed", presence: "present", openings: 42L]
+    w.push(22, d.concat(d.concat(d.pbFixed32(1, 0x3009), d.pbFloat(3, 0.3f)), d.pbVarint(5, 1)))
+    w.dev.toggle(); w.pump()
+    assert w.lastSent(30)[1][8] == 1L, "a moving door stops"
+    w.push(22, d.concat(d.pbFixed32(1, 0x3009), d.pbFloat(3, 0.3f)))
+    w.dev.toggle(); w.pump()
+    assert Float.intBitsToFloat(w.lastSent(30)[1][5]) == 0f, "a stopped, part-open door closes"
+    int before = w.rat.received.size()
+    w.dev.refresh(); w.pump()
+    assert w.rat.received.drop(before).collect { it[0] } == [20], "no Query status button: only re-subscribe"
+}
+
+check("two updates in one burst log once (seen on a C-8: 'door is opening' twice, 24 ms apart)") {
+    World w = connected(root, KEY)
+    Class d = w.d
+    byte[] a = w.rat.msg(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, 0.01f)), d.pbVarint(5, 1)))
+    byte[] l = w.rat.msg(24, d.concat(d.pbFixed32(1, LIGHT), d.pbVarint(2, 1)))
+    byte[] b = w.rat.msg(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, 0.02f)), d.pbVarint(5, 1)))
+    w.deliver(d.cat(a, l, b)); w.hub.settle()
+    assert w.dev.driver.log.at("info").count { it.contains("door is opening") } == 1
+    assert w.dev.events.count { it.name == "door" && it.value == "opening" } == 1
+}
+
+check("while the door moves, position is reported every 10%; the stop is exact") {
+    World w = connected(root, KEY)
+    Class d = w.d
+    int before = w.dev.events.count { it.name == "position" }
+    (1..28).each { i ->   // a 14 s open at 2 updates a second
+        w.push(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, (float) (i / 28))), d.pbVarint(5, i < 28 ? 1 : 0)))
+    }
+    List pos = w.dev.events.findAll { it.name == "position" }.drop(before)*.value
+    assert pos.size() <= 11 && pos.last() == 100L && w.dev.current.door == "open"
+    w.push(22, d.concat(d.concat(d.pbFixed32(1, DOOR), d.pbFloat(3, 0.43f)), d.pbVarint(5, 0)))
+    assert w.dev.current.position == 43L
+}
+
+check("Save and uninstall say goodbye (DisconnectRequest) before closing; errors just close") {
+    World w = connected(root, KEY)
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.rat.received.collect { it[0] }.contains(5)
+    assert w.dev.current.networkStatus == "online"
+    int n = w.rat.received.size()
+    w.dev.uninstalled(); w.hub.settle(); w.pump()
+    assert w.rat.received.drop(n).collect { it[0] } == [5]
+    assert !w.d.SENT.containsKey(w.dev.idAsLong) && !w.d.MEM.containsKey(w.dev.idAsLong), "nothing left in memory"
+    World e = connected(root, KEY)
+    e.dev.socketStatus("receive error: Stream closed"); e.hub.settle()
+    assert !e.rat.received.collect { it[0] }.contains(5)
+}
+
+check("another ESPHome device at the ratgdo's address is named, not mistaken for a wrong key; Save re-learns") {
+    World w = connected(root, KEY)
+    assert w.dev.data.esphomeName == "nexus-gate"
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities, serverName: "bt-proxy-1")
+    w.dev.connectNow(); w.hub.settle(); w.pump()
+    assert w.dev.current.networkStatus == "offline" && w.dev.current.lastError.contains("'bt-proxy-1'")
+    assert w.dev.current.lastError.contains("'nexus-gate'") && w.rat.received.isEmpty(), "nothing sent after the hello"
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.dev.current.networkStatus == "online" && w.dev.data.esphomeName == "bt-proxy-1"
+}
+
+check("a wrong key names the device that rejected it") {
+    World w = world(root, KEY)
+    w.rat.wrongKey = true
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.dev.current.lastError == "Wrong API key: 'nexus-gate' at 172.16.214.150 rejected it"
+}
+
+check("healthStatus: online when connected, offline when not; a reconnect in progress keeps it") {
+    World w = connected(root, KEY)
+    assert w.dev.current.healthStatus == "online"
+    w.dev.socketStatus("receive error: Stream closed"); w.hub.settle()
+    assert w.dev.current.healthStatus == "offline"
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities, silent: true)
+    w.dev.connectNow(); w.hub.settle(); w.pump()
+    assert w.dev.current.networkStatus == "connecting" && w.dev.current.healthStatus == "offline"
+}
+
+check("the wall button: each press is a pushed event, the release is not; push() never moves the door") {
+    World w = connected(root, KEY)
+    Class d = w.d
+    assert w.dev.current.numberOfButtons == 1
+    def btn = { int v -> w.push(21, d.concat(d.pbFixed32(1, BTN_SENSOR), d.pbVarint(2, v))) }
+    btn(1); btn(0); btn(1); btn(0)
+    List p = w.dev.events.findAll { it.name == "pushed" }
+    assert p.size() == 2 && p.every { it.value == 1 && it.isStateChange && it.type == "physical" }
+    int sent = w.rat.received.size()
+    w.dev.push(1); w.pump()
+    assert w.dev.events.findAll { it.name == "pushed" }.last().type == "digital" && w.rat.received.size() == sent
+}
+
+check("restart: the ratgdo's Restart button; its goodbye is expected, so no warning or backoff, and a reconnect in 15 s") {
+    World w = connected(root, KEY)
+    w.dev.restart(); w.pump()
+    assert w.lastSent(62)[1][1] == RESTART
+    w.push(5, new byte[0])                         // ESPHome says goodbye as it reboots
+    assert w.dev.current.networkStatus == "connecting" && w.dev.current.lastError == "Restarting"
+    assert w.dev.current.healthStatus == "online" && !w.dev.driver.log.at("warn")
+    assert w.dev.driver.callsNamed("runIn").last()[1..2] == [15, "connectNow"] && w.dev.driver.state.retry == 0
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities)
+    w.dev.connectNow(); w.hub.settle(); w.pump()
+    assert w.dev.current.networkStatus == "online"
+}
+
+check("review: a status change and its reversal in one execution both land (an odd number of failed reconnects ends offline)") {
+    World w = world(root, KEY)
+    w.dev.driver.interfaces.rawSocket.refuse = true
+    w.dev.updated(); w.hub.settle()
+    3.times { w.dev.connectNow(); w.hub.settle() }
+    assert w.dev.current.networkStatus == "offline"
+    w.dev.watchdog(); w.hub.settle()
+    assert w.dev.driver.callsNamed("socket.connect").size() == 4, "the watchdog leaves the backoff alone"
+    World v = world(root, KEY)                          // online, then a bad frame, in one burst
+    v.rat.tamperAfterList = true
+    v.dev.updated(); v.hub.settle(); v.pump()
+    assert v.dev.events.findAll { it.name == "networkStatus" }*.value.takeRight(2) == ["online", "offline"]
+    assert v.dev.current.networkStatus == "offline" && v.dev.current.healthStatus == "offline"
+}
+
+check("review: Restart never picks a safe-mode button; strict wall-button match") {
+    Class d = new Hub(root).compile(new File(root, "drivers/ratgdo-esphome.groovy"))
+    assert d.entityRole("button", "restart_safe_mode restart (safe mode)") == null
+    assert d.entityRole("button", "safe_mode_restart safe mode restart") == null
+    assert d.entityRole("binary_sensor", "learn_button learn button") == null
+    assert d.entityRole("binary_sensor", "remote_button remote button") == null
+    assert d.entityRole("binary_sensor", "button button") == "wallButton"
+}
+
+check("review: presetPosition takes a number too; numberOfButtons is set without a wall button") {
+    World w = world(root, KEY)
+    w.rat.entities.remove(BTN_SENSOR)
+    w.dev.updated(); w.hub.settle(); w.pump()
+    assert w.dev.current.numberOfButtons == 1
+    w.dev.presetPosition(50); w.pump()
+    assert Float.intBitsToFloat(w.lastSent(30)[1][5]) == 0.5f
+}
+
+check("review: the goodbye gets time to leave before the socket closes") {
+    World w = connected(root, KEY)
+    w.dev.updated(); w.hub.settle()
+    List names = w.dev.driver.calls.collect { it[0] }
+    int bye = names.lastIndexOf("pauseExecution")
+    assert bye > 0 && names.subList(bye, names.size()).contains("socket.close") && names[bye - 1] == "socket.send"
+}
+
+check("review: a different device at the address is not retried every 5 minutes; an unnamed device reads cleanly") {
+    World w = connected(root, KEY)
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities, serverName: "bt-proxy-1")
+    2.times { w.dev.connectNow(); w.hub.settle(); w.pump() }
+    assert w.dev.driver.callsNamed("runIn").last()[1..2] == [1800, "connectNow"]
+    assert w.dev.driver.log.at("error").size() == 1 && w.dev.current.networkStatus == "offline"
+    World u = world(root, KEY)
+    u.rat.wrongKey = true; u.rat.serverName = ""
+    u.dev.updated(); u.hub.settle(); u.pump()
+    assert u.dev.current.lastError == "Wrong API key: 172.16.214.150 rejected it"
+}
+
+check("review: a barely-open door logs 1%, not 0%") {
+    World w = connected(root, KEY)
+    w.push(22, w.d.concat(w.d.pbFixed32(1, DOOR), w.d.pbFloat(3, 0.004f)))
+    assert w.dev.driver.log.at("info").last() == "Nexus Gate door is open (1%)"
+}
+
+check("seen on the C-8 at 03:27: after a fresh start, a frame left over from the old connection is ignored, not fatal") {
+    World w = connected(root, KEY)
+    w.d.MEM.clear()                                 // a hub restart or new code: memory gone, socket maybe open
+    byte[] stale = w.rat.msg(24, w.d.concat(w.d.pbFixed32(1, LIGHT), w.d.pbVarint(2, 1)))   // old session's frame
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities)
+    int closes = w.dev.driver.callsNamed("socket.close").size()
+    w.dev.connectNow(); w.hub.settle()
+    assert w.dev.driver.callsNamed("socket.close").size() == closes + 1, "the old socket is closed first"
+    w.deliver(stale); w.hub.settle()                // arrives before the new hello
+    w.pump()
+    assert w.dev.current.networkStatus == "online" && !w.dev.driver.log.at("warn")
 }
 
 Check.finish()

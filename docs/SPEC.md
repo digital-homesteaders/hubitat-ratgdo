@@ -29,7 +29,7 @@ opening duration or the learn switch, which belong in the ESPHome dashboard.
 |---|---|---|
 | 1 | TCP to port 6053 (`interfaces.rawSocket`, `byteInterface: true`) | |
 | 2 | `01 00 00` (hello), then `01 LL LL 00` + Noise message 1 | |
-| 3 | | `01 LL LL 01 name\0 mac\0`: server hello |
+| 3 | | `01 LL LL 01 name\0 mac\0`: server hello. The name must match the one learned on the first connection (device data `esphomeName`; Save clears it), or the driver stops here |
 | 4 | | `01 LL LL 00` + Noise message 2, or `01 LL LL 01 reason`: rejected |
 | 5 | encrypted `HelloRequest` + empty `AuthenticationRequest` | `HelloResponse` |
 | 6 | `DeviceInfoRequest`, `ListEntitiesRequest` | device info, one message per entity, `ListEntitiesDoneResponse` |
@@ -88,35 +88,57 @@ Unknown types are skipped.
 ## Entities to Hubitat
 
 An entity is matched by domain plus a word in its `object_id` or name, so a
-renamed `id_prefix` or a v2.5/v32 board still lines up.
+renamed `id_prefix`, a v2.5/v32 board, or Gelidus's SecplusGDO firmware ("Garage
+Door", "Garage Motion Sensor", "Garage Door Openings") still lines up.
 
 | ratgdo entity | Hubitat |
 |---|---|
-| cover (first, `garage` preferred) | `door` (open, closed, opening, closing), `contact`, `position` 0–100; `open`, `close`, `stop`, `setPosition`, `toggle` |
+| cover (first, `garage` preferred) | `door` (open, closed, opening, closing), `contact`, `position` 0–100; `open`, `close`, `stop`, `setPosition`, `presetPosition` (0/25/50/75/100), `toggle` |
 | light | `light` attribute; `lightOn`/`lightOff`; the optional child Generic Component Switch |
 | lock "Lock remotes" | `remotes` (locked, unlocked); `lockRemotes`/`unlockRemotes` |
 | binary_sensor motion / obstruction / motor | `motion` (active, inactive), `obstruction` (obstructed, clear), `motor` (running, idle) |
 | sensor openings | `openings` |
+| binary_sensor vehicle detected (Disco) or vehicle parked (Gelidus ultrasound) | `presence` (present, not present) |
+| binary_sensor vehicle arriving / leaving (Disco, Gelidus ultrasound) | `vehicleMotion` (arriving, leaving, none) |
+| binary_sensor manually operated (encoder) | `manuallyOperated` (yes, no) |
+| binary_sensor button / garage button | `pushed` 1 on each press (not the release); `numberOfButtons` 1. `push()` records a press only and never moves the door |
 | button "Toggle door" | used by `toggle` when present |
 | button "Query status" | used by `refresh` when present |
+| button "Restart" | `restart` |
 
 Door state: `current_operation` 1 means opening and 2 means closing.
 Otherwise position 0 is `closed` and any other position is `open`. The contact
 is `closed` only when the door is closed. Protobuf leaves out zero values, so a
 missing position is 0, which is closed.
 
+Left out on purpose: the encoder step count, the Disco's vehicle distance
+(every few seconds; too chatty for hub events), laser, LED, voltage and Wi-Fi
+signal, and every config number. With the encoder, the cover's own position is
+encoder-based, so nothing extra is needed for an exact `position`.
+
 `toggle` presses the ratgdo's own Toggle button, so it can stop a moving door.
-Without that button it opens a closed door and closes any other.
+Without that button (SecplusGDO) it stops a moving door, opens a closed one
+and closes any other.
 
 ## Health
 
 - `networkStatus` is connecting, online (after the entity list), offline or
-  bad key. `lastError` says why in plain words.
+  bad key. `lastError` says why in plain words. `healthStatus` (Hubitat's
+  standard) is online or offline; a reconnect in progress keeps the last value.
+- Save and uninstall send DisconnectRequest before closing, so the ESP8266's
+  slot (4 in all) frees at once. Error paths just close.
 - The watchdog runs every minute. It pings after 50 s with nothing received and
   reconnects after 150 s. The ratgdo pings on its own after 60 s quiet and
   drops a client after 150 s.
-- Reconnects wait 5, 10, 20 s and so on, up to 5 minutes. A wrong key, or a
-  device without encryption, retries every 30 minutes and says so once.
+- Reconnects wait 5, 10, 20 s and so on, up to 5 minutes. A wrong key, a
+  device without encryption, or a different ESPHome device at the address
+  retries every 30 minutes and says so once.
+- **Restart** presses the board's Restart button (never a safe-mode one). The
+  goodbye that follows is expected: networkStatus "connecting", lastError
+  "Restarting", no warning, no backoff, reconnect after 15 s.
+- Every event goes through one check against what the driver last sent (kept in
+  memory across sessions) and is sent as a state change, because within one
+  execution the hub's currentValue still returns the old value.
 - The handshake has 15 s to finish.
 - `initialize()` runs on hub start (capability Initialize) and on Save.
 - Saving new driver code clears the in-memory session but may leave the socket

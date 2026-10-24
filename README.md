@@ -25,7 +25,7 @@ nothing on the ratgdo changes.
 
 | In Hubitat | From the ratgdo |
 |---|---|
-| `door`: open, closed, opening, closing. Commands: **Open**, **Close**, **Stop**, **Toggle**, **Set Position** | Door |
+| `door`: open, closed, opening, closing. Commands: **Open**, **Close**, **Stop**, **Toggle**, **Set Position** (0–100), **Preset Position** (0, 25, 50, 75 or 100) | Door |
 | `contact`: open or closed (closed only when the door is fully closed) | Door |
 | `position`: 0–100 | Door |
 | `light` attribute, **Light On** / **Light Off**, plus an optional light device | Light |
@@ -34,11 +34,31 @@ nothing on the ratgdo changes.
 | `motor`: running or idle | Motor |
 | `remotes`: locked or unlocked. Commands: **Lock Remotes** / **Unlock Remotes** | Lock remotes |
 | `openings` | Openings counter |
-| `networkStatus`: connecting, online, offline or bad key. `lastError` says why | The connection |
+| `presence`: present or not present | Vehicle detected (ratgdo32 Disco) or Vehicle parked (Gelidus ultrasound) |
+| `vehicleMotion`: arriving, leaving or none | Vehicle arriving and leaving (ratgdo32 Disco, Gelidus ultrasound) |
+| `manuallyOperated`: yes or no | Manually Operated (with the ratgdo encoder) |
+| `pushed`: button 1, each time the opener's wall button is pressed | Button |
+| **Restart**: reboots the ratgdo; the driver reconnects by itself in about 10 s | Restart |
+| `networkStatus`: connecting, online, offline or bad key. `lastError` says why. `healthStatus`: Hubitat's standard online or offline | The connection |
 
-**Toggle** presses the ratgdo's own Toggle button, so it can also stop a moving
-door. **Refresh** presses Query status. Settings such as opening duration or
-the learn switch stay in the ESPHome dashboard.
+**Boards:** ratgdo v2.5i, ratgdo32 and ratgdo32 Disco on ESPHome firmware,
+including the dry-contact and Security+ 1.0 variants, and Gelidus Research GRGDO
+boards with either ESPHome RATGDO or ESPHome SecplusGDO firmware. Gelidus's
+stock configs have no API key, so add one under `api: encryption:` and flash it
+first. A board only shows what its firmware has: dry-contact builds have no
+light or motion, for example, and only the Disco and Gelidus boards with a
+vehicle sensor have vehicle sensing. With the ratgdo encoder fitted, the door's position
+comes from the encoder, so `position` is exact rather than estimated from
+travel time. The Disco's laser, LED, distance and voltage stay in ESPHome.
+
+The wall button lets rules react to someone using the opener's own button. The
+**Push** command only records a press in Hubitat; it never moves the door.
+
+**Toggle** presses the board's own Toggle button. Firmware without one
+(SecplusGDO) gets the same effect from the driver: a moving door stops, a closed
+door opens and any other door closes. **Refresh** presses Query status where the
+firmware has it, and always asks the board for every current state. Settings
+such as opening duration or the learn switch stay in the ESPHome dashboard.
 
 ## Before you start
 
@@ -93,6 +113,7 @@ For a second ratgdo, add another virtual device the same way.
 
 | `networkStatus` / `lastError` | What to do |
 |---|---|
+| **offline**: "A different ESPHome device ... answers at" | The IP address now belongs to another ESPHome device, often after a DHCP change. Fix the IP (a router reservation stops it happening again), then **Save Preferences**. |
 | **bad key**: "Wrong API key" | Copy the key again from the YAML. It must be exact, including the `=` at the end. |
 | **bad key**: "no API key set" | The ratgdo runs without encryption. Add `api: encryption: key:` to its YAML and flash it. Generate a key at [esphome.io](https://esphome.io/components/api.html). |
 | **offline**: "Can't reach" | Check the IP address, and that the hub can reach port 6053 (VLANs, firewall). |
@@ -110,8 +131,11 @@ your API key.** The driver never logs it, so the log is safe to share.
 
 ## Security
 
-The API key is stored as a password-type setting and is used only to set up
-each connection. The session keys exist only in memory and are never written
+The API key is stored as a password-type setting, like other Hubitat apps'
+passwords and keys: hidden on screen but not encrypted, so anyone signed in to
+the hub can reveal it. Turn on **Hub Login Security** and keep hub backups
+private. The key is used only to set up each connection and never crosses the
+network. The session keys exist only in memory and are never written
 to the hub's database. See [SECURITY.md](SECURITY.md) to report a vulnerability,
 and [docs/SPEC.md](docs/SPEC.md) for the protocol and design.
 

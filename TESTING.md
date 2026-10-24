@@ -33,16 +33,42 @@ against small stand-ins for the hub, then runs:
   one during a new handshake); new driver code clearing memory; refresh while
   offline; and that no key material reaches `state`.
 
-## Needs a real hub
+## Confirmed on a real hub
 
-Not yet confirmed (0.1.0):
+2026-10-22, Hubitat C-8, ratgdo v2.5i (ESP8266, ESPHome firmware, encrypted):
 
-- [ ] The sandbox accepts every import (`MessageDigest`, `Mac`,
-      `SecureRandom`, `BigInteger`, `ByteArrayOutputStream`) and the
-      `interfaces.rawSocket` calls with `byteInterface: true`.
+- [x] The sandbox accepts every import (`MessageDigest`, `Mac`, `SecureRandom`,
+      `BigInteger`, `ByteArrayOutputStream`) and `interfaces.rawSocket` with
+      `byteInterface: true`.
+- [x] The encrypted handshake with the real API key, the hello, and the entity
+      list: "connected (door, light, motion, motor, obstruction, openings,
+      queryButton, remotes, toggleButton)".
+- [x] Open, Stop partway and Close from Hubitat; the opener's own light
+      reported on and off.
+- [x] Live updates when the door is opened and closed from the myQ app.
+- [x] Hub reboot (2026-10-23): online again by itself after startup.
+- [x] Restart: "restarting the ratgdo", then connected again 13 s later.
+- [x] Found on the hub: after an apparent fresh start at 03:26, a leftover frame
+      ended the next connection ("unknown encryption protocol"); it recovered in
+      9 s, and is fixed under Unreleased.
+- [x] Set Position and Preset Position: 25, 50, 75, 100 then 0 each stopped
+      where asked, about 3.5 s per 25% (log: "door is open (25%)" ...), and the
+      position was reported at each stop.
+- [x] After Save, the driver reconnects to the same ratgdo (name check) and maps
+      the wall button: "connected (... toggleButton, wallButton)".
+- [x] Found on the hub: two updates in one burst logged "door is opening" twice
+- [x] Wall button gives `pushed` 1 (physical) and the door opens and closes (2026-10-23).
+- [x] Motion, obstruction and the opener's own light timer update live (2026-10-23). Motion arrived as 3-second pulses, hence the hold setting.
+- [x] Toggle, Light On/Off from Hubitat, and the openings count goes up after a cycle (2026-10-23).
+      (fixed; see CHANGELOG, Unreleased).
+
+## Still needs a real hub
+
 - [ ] Handshake time on a C-7 and a C-8 (about 4 ms for both X25519 steps on an M-series Mac; each 40-byte message about 0.04 ms).
-- [ ] Connects to a real ratgdo v2.5i (ESPHome 2026.x) alongside Home Assistant.
-- [ ] Open, close, stop, toggle, set position, light, lock remotes.
-- [ ] Motion, obstruction and openings update live.
-- [ ] Reconnects after a ratgdo reboot, a Wi-Fi drop and a hub reboot.
+- [ ] Stays connected alongside Home Assistant for a day or more.
+- [ ] Lock/Unlock Remotes.
+- [ ] Motion held active for the chosen time (default 30 s) instead of 3-second pulses.
+- [ ] Reconnects after a Wi-Fi drop (a ratgdo reboot and a hub reboot are confirmed).
+- [ ] ratgdo32, ratgdo32 Disco (vehicle presence, arriving and leaving) and the encoder (`manuallyOperated`, exact position).
+- [ ] A Gelidus GRGDO board with SecplusGDO firmware (after adding an API key).
 - [ ] Older ESPHome firmware (before 2026.1, which still expects the login message).

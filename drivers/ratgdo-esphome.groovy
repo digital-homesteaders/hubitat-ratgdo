@@ -21,11 +21,13 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 @Field static final String DRIVER_NAME = "ratgdo (ESPHome)"
-@Field static final String DRIVER_VERSION = "0.1.0"
+@Field static final String DRIVER_VERSION = "0.2.0"
 
 // Per-device session: socket phase, Noise keys and nonces, receive buffer and
 // entity map. Kept out of state so keys never reach the database.
 @Field static final ConcurrentHashMap MEM = new ConcurrentHashMap()
+// Per device: attribute -> the value we last sent (see lastValue).
+@Field static final ConcurrentHashMap SENT = new ConcurrentHashMap()
 
 @Field static final byte[] NOISE_NAME = "Noise_NNpsk0_25519_ChaChaPoly_SHA256".getBytes("US-ASCII")
 @Field static final byte[] PROLOGUE = "NoiseAPIInit\u0000\u0000".getBytes("US-ASCII")
@@ -40,6 +42,8 @@ import javax.crypto.spec.SecretKeySpec
 @Field static final long DEAD_AFTER_MS = 150000
 @Field static final int BACKOFF_MAX_SECS = 300
 @Field static final int BAD_KEY_RETRY_SECS = 1800
+@Field static final int POSITION_STEP = 10
+@Field static final int RESTART_SECS = 15
 
 // ESPHome API message types (api.proto)
 @Field static final int HELLO_REQ = 1, HELLO_RESP = 2, AUTH_REQ = 3, AUTH_RESP = 4
@@ -60,6 +64,8 @@ metadata {
         capability "GarageDoorControl"
         capability "ContactSensor"
         capability "MotionSensor"
+        capability "PresenceSensor"
+        capability "PushableButton"
         capability "Refresh"
         capability "Initialize"
 
@@ -69,24 +75,36 @@ metadata {
         attribute "motor", "enum", ["running", "idle"]
         attribute "remotes", "enum", ["locked", "unlocked"]
         attribute "openings", "number"
+        attribute "vehicleMotion", "enum", ["arriving", "leaving", "none"]
+        attribute "manuallyOperated", "enum", ["yes", "no"]
         attribute "networkStatus", "enum", ["connecting", "online", "offline", "bad key"]
+        attribute "healthStatus", "enum", ["online", "offline"]
         attribute "lastError", "string"
 
         command "stop"
         command "toggle"
         command "setPosition", [[name: "Position*", type: "NUMBER", description: "0 closed to 100 open"]]
+        command "presetPosition", [[name: "Position*", type: "ENUM", description: "Percent open",
+                                    constraints: ["0", "25", "50", "75", "100"]]]
         command "lightOn"
         command "lightOff"
         command "lockRemotes"
         command "unlockRemotes"
+        command "restart"
     }
     preferences {
         input "host", "text", title: "ratgdo IP address", required: true,
             description: "For example 192.168.1.50. A fixed (reserved) address is best."
         input "apiKey", "password", title: "API encryption key", required: true,
             description: "The 'api: encryption: key:' value from the ratgdo's YAML, also shown in Home Assistant"
-        input "port", "number", title: "API port", defaultValue: 6053
+        input "port", "text", title: "API port", defaultValue: "6053",
+            description: "Leave at 6053 unless the ratgdo's YAML sets another"
         input "lightChild", "bool", title: "Add the light as its own device", defaultValue: true
+        input "motionHold", "enum", title: "Motion stays active for", defaultValue: "30",
+            options: ["0": "As the ratgdo reports it (about 3 s a pulse)", "30": "30 s after the last motion",
+                      "60": "1 minute after the last motion", "120": "2 minutes after the last motion",
+                      "300": "5 minutes after the last motion"],
+            description: "The ratgdo reports motion as 3-second pulses; holding it avoids a stream of active/inactive events"
         input "txtEnable", "bool", title: "Log door, light and motion changes", defaultValue: true
         input "logEnable", "bool", title: "Debug logging (turns off after 30 minutes)", defaultValue: false
     }
@@ -98,14 +116,21 @@ void installed() { initialize() }
 
 void updated() {
     if (logEnable) runIn(1800, "logsOff")
+    device.removeDataValue("esphomeName")   // Save re-learns which ratgdo is at this address
     syncLightChild()
     initialize()
 }
 
-void uninstalled() { disconnect() }
+/** No motion pulse for the hold time. */
+void motionClear() { emit("motion", "inactive") }
+
+void uninstalled() {
+    disconnect(true)
+    SENT.remove(device.idAsLong)
+}
 
 void initialize() {
-    disconnect()
+    disconnect(true)
     state.retry = 0
     state.remove("badKeyWarned")
     unschedule("watchdog")
@@ -125,22 +150,50 @@ void open() { coverPosition(1f) }
 void close() { coverPosition(0f) }
 void setPosition(def pct) { coverPosition((float) (Math.max(0, Math.min(100, pct as int)) / 100)) }
 
+/** The same as setPosition, from a fixed list (the device page's dropdown). */
+void presetPosition(def pct) { setPosition(pct as int) }
+
 void stop() {
     Integer k = keyFor("door")
     if (k != null) sendApi(COVER_CMD, cat(pbFixed32(1, k), pbVarint(8, 1)))
 }
 
 void toggle() {
-    Integer b = keyFor("toggleButton")
-    if (b != null) sendApi(BUTTON_CMD, pbFixed32(1, b))
-    else if (device.currentValue("door") == "closed") open()
+    Integer b = (Integer) MEM[device.idAsLong]?.roles?.get("toggleButton")
+    if (b != null) { sendApi(BUTTON_CMD, pbFixed32(1, b)); return }
+    String door = device.currentValue("door")
+    if (door in ["opening", "closing"]) stop()       // as the opener's own button does
+    else if (door == "closed") open()
     else close()
+}
+
+/** PushableButton: records a press in Hubitat only. It never moves the door (use Toggle for that). */
+void push(def n = 1) { pushed(n as int, "digital") }
+
+private void pushed(int n, String type) {
+    if (txtEnable) log.info "${device.displayName} button ${n} was pushed (${type})"
+    sendEvent(name: "pushed", value: n, isStateChange: true, type: type, descriptionText: "${device.displayName} button ${n} was pushed")
 }
 
 void lightOn() { lightState(true) }
 void lightOff() { lightState(false) }
 void lockRemotes() { lockCommand(1) }
 void unlockRemotes() { lockCommand(0) }
+
+/** Reboot the ratgdo with its own Restart button; the driver reconnects when it's back (about 10 s). */
+void restart() {
+    Integer k = keyFor("restartButton")
+    if (k == null) return
+    log.info "${device.displayName}: restarting the ratgdo"
+    if (sendApi(BUTTON_CMD, pbFixed32(1, k))) MEM[device.idAsLong].restarting = true
+}
+
+/** After our own Restart: no warning, no backoff; reconnect once the board has booted. */
+private void reconnectAfterRestart() {
+    disconnect()
+    status("connecting", "Restarting")
+    runIn(RESTART_SECS, "connectNow")
+}
 
 void refresh() {
     if (MEM[device.idAsLong] == null && host && apiKey) { connectNow(); return }   // offline: try now
@@ -184,11 +237,18 @@ void connectNow() {
         badKey("The API key must be the 44-character base64 value from the ratgdo's YAML")
         return
     }
+    Integer p = apiPort()
+    if (p == null) {
+        status("offline", "The API port must be a number from 1 to 65535")
+        return
+    }
     Map m = [phase: "hello", buf: new byte[0], entities: [:], roles: [:], lastRx: now()]
     MEM[device.idAsLong] = m
     status("connecting", null)
+    // New code or a hub restart empties MEM but can leave the old socket open: close it regardless.
+    try { interfaces.rawSocket.close() } catch (ignored) { }
     try {
-        interfaces.rawSocket.connect([byteInterface: true], host as String, (port ?: 6053) as int)
+        interfaces.rawSocket.connect([byteInterface: true], host as String, p)
     } catch (e) {
         MEM.remove(device.idAsLong)
         reconnectLater("Can't reach ${host}: ${e.message}")
@@ -218,12 +278,25 @@ void socketStatus(String message) {
     logDebug "socket: ${message}"
     // Only a live session counts: closing an old socket can report late, and the
     // handshake has its own timeout.
-    if (MEM[device.idAsLong]?.phase == "ready") reconnectLater("Connection lost (${message})")
+    Map m = MEM[device.idAsLong]
+    if (m?.phase != "ready") return
+    if (m.restarting) reconnectAfterRestart()
+    else reconnectLater("Connection lost (${message})")
 }
 
-private void disconnect() {
+/** The port setting as a number; text, so the hub doesn't show "6,053". Older saves may be numbers. */
+private Integer apiPort() {
+    String s = (port ?: "6053").toString().replace(",", "").trim()
+    return s.isInteger() && (s as int) in 1..65535 ? s as int : null
+}
+
+/** Close the session; goodbye sends ESPHome's DisconnectRequest first, which frees the ratgdo's slot at once. */
+private void disconnect(boolean goodbye = false) {
     unschedule("handshakeTimeout")
     unschedule("connectNow")
+    if (goodbye && MEM[device.idAsLong]?.phase == "ready") {
+        try { sendApi(DISCONNECT_REQ, new byte[0]); pauseExecution(200) } catch (ignored) { }   // let it leave before close
+    }
     if (MEM.remove(device.idAsLong) != null) {
         try { interfaces.rawSocket.close() } catch (ignored) { }
     }
@@ -239,17 +312,22 @@ private void reconnectLater(String why) {
     runIn(secs, "connectNow")
 }
 
-private void badKey(String why) {
+/** A problem retrying won't fix soon (wrong key, wrong device): say it once, retry every 30 minutes. */
+private void badKey(String why, String s = "bad key") {
     disconnect()
-    status("bad key", why)
+    status(s, why)
     if (!state.badKeyWarned) log.error "${device.displayName}: ${why}"
     state.badKeyWarned = true
     runIn(BAD_KEY_RETRY_SECS, "connectNow")
 }
 
+/** Connection state; put() keeps "connecting" then "offline" in one execution from losing the "offline". */
 private void status(String s, String error) {
-    if (device.currentValue("networkStatus") != s) sendEvent(name: "networkStatus", value: s)
-    if (error != null && device.currentValue("lastError") != error) sendEvent(name: "lastError", value: error)
+    put("networkStatus", s)
+    // Hubitat's standard online/offline; a reconnect in progress keeps the last value.
+    String health = s == "online" ? "online" : s == "connecting" ? null : "offline"
+    if (health) put("healthStatus", health)
+    if (error != null) put("lastError", error)
 }
 
 // ---------------------------------------------------------------- receive
@@ -278,13 +356,25 @@ void parse(String hex) {
 private boolean onFrame(Map m, byte[] f) {
     switch (m.phase) {
         case "hello":
-            if (f.length == 0 || f[0] != 1) { reconnectLater("The ratgdo offered an unknown encryption protocol"); return false }
+            if (f.length == 0 || f[0] != 1) {
+                // Most likely left over from the previous connection; the handshake timeout covers a real fault.
+                logDebug "ignored a ${f.length}-byte frame while waiting for the ratgdo's hello"
+                return true
+            }
+            int end = 1
+            while (end < f.length && f[end] != 0) end++
+            m.name = new String(f, 1, end - 1, "UTF-8")
+            String pinned = device.getDataValue("esphomeName")
+            if (pinned && m.name && m.name != pinned) {
+                badKey("A different ESPHome device ('${m.name}') answers at ${host}, not '${pinned}'. Fix the IP address, then Save", "offline")
+                return false
+            }
             m.phase = "handshake"
             return true
         case "handshake":
             if (f.length == 0 || f[0] != 0) {
                 String why = f.length > 1 ? new String(f, 1, f.length - 1, "UTF-8") : ""
-                if (why == "Handshake MAC failure") badKey("Wrong API key: the ratgdo rejected it")
+                if (why == "Handshake MAC failure") badKey("Wrong API key: ${m.name ? "'${m.name}' at " : ""}${host} rejected it")
                 else reconnectLater("Handshake refused: ${why}")
                 return false
             }
@@ -317,7 +407,8 @@ private void onMessage(Map m, int type, Map f) {
             break
         case DISCONNECT_REQ:
             sendApi(DISCONNECT_RESP, new byte[0])
-            reconnectLater("The ratgdo closed the connection")
+            if (m.restarting) reconnectAfterRestart()
+            else reconnectLater("The ratgdo closed the connection")
             break
         case PING_REQ:
             sendApi(PING_RESP, new byte[0])
@@ -328,9 +419,10 @@ private void onMessage(Map m, int type, Map f) {
             }
             break
         case LIST_DONE:
+            put("numberOfButtons", 1)   // push() works with or without the wall button
             state.retry = 0
             state.remove("badKeyWarned")
-            status("online", "")
+            status("online", "none")
             log.info "${device.displayName}: connected (${m.roles.keySet().sort().join(', ')})"
             sendApi(SUBSCRIBE_STATES, new byte[0])
             break
@@ -360,14 +452,25 @@ static String entityRole(String domain, String words) {
         case "light": return "light"
         case "lock": return "remotes"
         case "binary_sensor":
+            if (words.contains("parked")) return "vehicle"                      // Gelidus ultrasound
+            if (words.contains("vehicle")) {
+                if (words.contains("detected")) return "vehicle"                // ratgdo32 Disco
+                if (words.contains("arriving")) return "arriving"
+                if (words.contains("leaving")) return "leaving"
+                return null
+            }
+            if (words.contains("manually")) return "manual"
             if (words.contains("obstruction")) return "obstruction"
             if (words.contains("motion")) return "motion"
             if (words.contains("motor")) return "motor"
+            // The opener's wall button: ratgdo's object_id "button", SecplusGDO's "garage_button".
+            if (words.tokenize(" ")[0] in ["button", "garage_button", "wall_button"]) return "wallButton"
             return null
         case "sensor": return words.contains("opening") ? "openings" : null
         case "button":
             if (words.contains("toggle")) return "toggleButton"
             if (words.contains("query_status") || words.contains("query status")) return "queryButton"
+            if (words.contains("restart") && !words.contains("safe")) return "restartButton"   // never safe mode: no API there
             return null
     }
     return null
@@ -382,9 +485,11 @@ private void onState(Map m, Map f) {
             float pos = f[3] != null ? Float.intBitsToFloat((Integer) f[3]) : 0f
             int op = (f[5] ?: 0L) as int
             String door = doorState(pos, op)
-            emit("door", door)
+            long p = Math.round(pos * 100)
+            emit("door", door, door == "open" && pos < 1f ? "${Math.max(1L, Math.min(99L, p))}%" : null)   // "door is open (25%)"
             emit("contact", door == "closed" ? "closed" : "open")
-            emit("position", Math.round(pos * 100))
+            // About 2 updates a second while moving: report every 10%, then the exact stop.
+            if (op == 0 || Math.abs(p - ((lastValue("position") ?: 0) as long)) >= POSITION_STEP) emit("position", p)
             break
         case "light":
             String v = f[2] ? "on" : "off"
@@ -397,13 +502,38 @@ private void onState(Map m, Map f) {
             if (ls == 1 || ls == 2) emit("remotes", ls == 1 ? "locked" : "unlocked")
             break
         case "motion":
-            if (!f[3]) emit("motion", f[2] ? "active" : "inactive")
+            if (f[3]) break
+            int hold = ((settings.motionHold ?: "30") as String) as int
+            if (f[2]) {
+                emit("motion", "active")
+                if (hold > 0) runIn(hold, "motionClear")   // each pulse pushes the end back
+            } else if (hold == 0 || device.currentValue("motion") == null) {   // or the first state after connecting
+                emit("motion", "inactive")
+            }
             break
         case "obstruction":
             if (!f[3]) emit("obstruction", f[2] ? "obstructed" : "clear")
             break
+        case "wallButton":
+            if (f[3]) break
+            boolean down = f[2] ? true : false
+            if (down && m.wallDown != true) pushed(1, "physical")    // a press, not the release
+            m.wallDown = down
+            break
         case "motor":
             if (!f[3]) emit("motor", f[2] ? "running" : "idle")
+            break
+        case "vehicle":
+            if (!f[3]) emit("presence", f[2] ? "present" : "not present")
+            break
+        case "arriving":
+        case "leaving":
+            if (f[3]) break
+            m[e.role] = f[2] ? true : false
+            emit("vehicleMotion", m.arriving ? "arriving" : m.leaving ? "leaving" : "none")
+            break
+        case "manual":
+            if (!f[3]) emit("manuallyOperated", f[2] ? "yes" : "no")
             break
         case "openings":
             if (!f[3] && f[2] != null) emit("openings", Math.round(Float.intBitsToFloat((Integer) f[2])))
@@ -418,11 +548,28 @@ static String doorState(float pos, int op) {
     return pos <= 0f ? "closed" : "open"
 }
 
-private void emit(String name, def value) {
-    if (device.currentValue(name)?.toString() == value.toString()) return
-    String text = "${device.displayName} ${name} is ${value}"
-    if (txtEnable && name in ["door", "light", "motion", "obstruction", "remotes"]) log.info text
-    sendEvent(name: name, value: value, descriptionText: text)
+/**
+ * What we last sent. Within one execution the hub's currentValue still returns the
+ * old value, so "connecting" then "offline" (or two door updates in one burst) would
+ * be judged wrongly. SENT outlives sessions; after new code or a reboot it starts
+ * empty and currentValue, correct at the start of an execution, fills in.
+ */
+private def lastValue(String name) {
+    Map seen = (Map) SENT[device.idAsLong]
+    return seen != null && seen.containsKey(name) ? seen[name] : device.currentValue(name)
+}
+
+/** Send an event only when the value really changed; isStateChange so the hub can't drop it on a stale comparison. */
+private boolean put(String name, def value, String text = null) {
+    if (lastValue(name)?.toString() == value.toString()) return false
+    SENT.computeIfAbsent(device.idAsLong) { new ConcurrentHashMap() }.put(name, value)
+    sendEvent(name: name, value: value, descriptionText: text, isStateChange: true)
+    return true
+}
+
+private void emit(String name, def value, String detail = null) {
+    String text = "${device.displayName} ${name} is ${value}" + (detail ? " (${detail})" : "")
+    if (put(name, value, text) && txtEnable && name in ["door", "light", "motion", "obstruction", "remotes", "presence", "manuallyOperated"]) log.info text
 }
 
 // ---------------------------------------------------------------- send
