@@ -59,14 +59,14 @@ against small stand-ins for the hub, then runs:
 - [x] Found on the hub: two updates in one burst logged "door is opening" twice
 - [x] Wall button gives `pushed` 1 (physical) and the door opens and closes (2026-10-23).
 - [x] Motion, obstruction and the opener's own light timer update live (2026-10-23). Motion arrived as 3-second pulses, hence the hold setting.
+- [x] Toggle, Light On/Off from Hubitat, and the openings count goes up after a cycle (2026-10-23).
       (fixed; see CHANGELOG, Unreleased).
 
 ## Still needs a real hub
 
 - [ ] Handshake time on a C-7 and a C-8 (about 4 ms for both X25519 steps on an M-series Mac; each 40-byte message about 0.04 ms).
 - [ ] Stays connected alongside Home Assistant for a day or more.
-- [ ] Toggle, Light On/Off, Lock/Unlock Remotes.
-- [ ] Openings update live.
+- [ ] Lock/Unlock Remotes.
 - [ ] Motion held active for the chosen time (default 30 s) instead of 3-second pulses.
 - [ ] Reconnects after a Wi-Fi drop (a ratgdo reboot and a hub reboot are confirmed).
 - [ ] ratgdo32, ratgdo32 Disco (vehicle presence, arriving and leaving) and the encoder (`manuallyOperated`, exact position).
