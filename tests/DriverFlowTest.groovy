@@ -282,6 +282,21 @@ check("sensor states: light, motion, obstruction, motor, remotes, openings; miss
     assert w.dev.current.motion == "active" && w.dev.current.remotes == "locked"
 }
 
+check("motion: 3-second pulses are held active until no pulse for the hold time; 0 passes them through") {
+    World w = connected(root, KEY)
+    Class d = w.d
+    def pulse = { int on -> w.push(21, d.concat(d.pbFixed32(1, MOTION), d.pbVarint(2, on))) }
+    pulse(1); pulse(0); pulse(1); pulse(0)
+    assert w.dev.current.motion == "active"
+    assert w.dev.events.count { it.name == "motion" && it.value == "active" } == 1, "one active, not a stream of them"
+    assert w.dev.driver.callsNamed("runIn").findAll { it[2] == "motionClear" }*.getAt(1) == [30, 30]
+    w.dev.motionClear(); w.hub.settle()
+    assert w.dev.current.motion == "inactive"
+    w.dev.driver.settings.motionHold = "0"
+    pulse(1); assert w.dev.current.motion == "active"
+    pulse(0); assert w.dev.current.motion == "inactive"
+}
+
 check("unchanged values send no new events") {
     World w = connected(root, KEY)
     int n = w.dev.events.size()

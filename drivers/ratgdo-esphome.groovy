@@ -100,6 +100,11 @@ metadata {
         input "port", "text", title: "API port", defaultValue: "6053",
             description: "Leave at 6053 unless the ratgdo's YAML sets another"
         input "lightChild", "bool", title: "Add the light as its own device", defaultValue: true
+        input "motionHold", "enum", title: "Motion stays active for", defaultValue: "30",
+            options: ["0": "As the ratgdo reports it (about 3 s a pulse)", "30": "30 s after the last motion",
+                      "60": "1 minute after the last motion", "120": "2 minutes after the last motion",
+                      "300": "5 minutes after the last motion"],
+            description: "The ratgdo reports motion as 3-second pulses; holding it avoids a stream of active/inactive events"
         input "txtEnable", "bool", title: "Log door, light and motion changes", defaultValue: true
         input "logEnable", "bool", title: "Debug logging (turns off after 30 minutes)", defaultValue: false
     }
@@ -115,6 +120,9 @@ void updated() {
     syncLightChild()
     initialize()
 }
+
+/** No motion pulse for the hold time. */
+void motionClear() { emit("motion", "inactive") }
 
 void uninstalled() {
     disconnect(true)
@@ -494,7 +502,14 @@ private void onState(Map m, Map f) {
             if (ls == 1 || ls == 2) emit("remotes", ls == 1 ? "locked" : "unlocked")
             break
         case "motion":
-            if (!f[3]) emit("motion", f[2] ? "active" : "inactive")
+            if (f[3]) break
+            int hold = ((settings.motionHold ?: "30") as String) as int
+            if (f[2]) {
+                emit("motion", "active")
+                if (hold > 0) runIn(hold, "motionClear")   // each pulse pushes the end back
+            } else if (hold == 0 || device.currentValue("motion") == null) {   // or the first state after connecting
+                emit("motion", "inactive")
+            }
             break
         case "obstruction":
             if (!f[3]) emit("obstruction", f[2] ? "obstructed" : "clear")
