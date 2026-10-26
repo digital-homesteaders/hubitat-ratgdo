@@ -29,7 +29,7 @@ opening duration or the learn switch, which belong in the ESPHome dashboard.
 |---|---|---|
 | 1 | TCP to port 6053 (`interfaces.rawSocket`, `byteInterface: true`) | |
 | 2 | `01 00 00` (hello), then `01 LL LL 00` + Noise message 1 | |
-| 3 | | `01 LL LL 01 name\0 mac\0`: server hello. The name must match the one learned on the first connection (device data `esphomeName`; Save clears it), or the driver stops here |
+| 3 | | `01 LL LL 01 name\0 mac\0`: server hello (older firmware sends `01` alone). The name must match the one learned on the first connection (device data `esphomeName`; Save clears it), or the driver stops here. A frame not shaped like a hello (no trailing `\0`) is left over from the old connection and ignored |
 | 4 | | `01 LL LL 00` + Noise message 2, or `01 LL LL 01 reason`: rejected |
 | 5 | encrypted `HelloRequest` + empty `AuthenticationRequest` | `HelloResponse` |
 | 6 | `DeviceInfoRequest`, `ListEntitiesRequest` | device info, one message per entity, `ListEntitiesDoneResponse` |
