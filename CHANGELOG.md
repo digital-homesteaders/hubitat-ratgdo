@@ -7,7 +7,7 @@
 - Fixed: a failed reconnect could leave `networkStatus` on "connecting" (and the watchdog then retried every minute, ignoring the backoff). Status changes in one execution all land now.
 - Restart is quiet: "connecting" with lastError "Restarting", no warning, no backoff, reconnect after 15 s. It never picks a safe-mode button.
 - A different ESPHome device at the address is reported once and retried every 30 minutes, not every 5.
-- Smaller review fixes: Preset Position accepts numbers, `numberOfButtons` is always 1, the wall button matches strictly, the goodbye gets time to leave, unnamed devices read cleanly in errors, and a barely-open door logs 1%, not 0%.
+- Smaller review fixes: Preset Position accepts numbers, `numberOfButtons` is always 1, the wall button matches strictly, the goodbye gets time to leave, unnamed devices read cleanly in errors, a barely-open door logs 1%, not 0%, the watchdog no longer jumps Restart's 15 s wait, a leftover frame that happens to start with 1 is not read as another device's hello, and Push with an empty button number works.
 - **Restart**: reboots the ratgdo with its own Restart button; the driver reconnects by itself.
 - A door stopped part-way logs its position: "door is open (25%)".
 - **Preset Position**: a 0, 25, 50, 75 or 100% dropdown next to Set Position, like Home Assistant's door buttons.

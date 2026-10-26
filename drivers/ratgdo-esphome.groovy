@@ -159,16 +159,16 @@ void stop() {
 }
 
 void toggle() {
-    Integer b = (Integer) MEM[device.idAsLong]?.roles?.get("toggleButton")
+    Integer b = keyFor("toggleButton", false)   // SecplusGDO has none: no warning, do it by hand
     if (b != null) { sendApi(BUTTON_CMD, pbFixed32(1, b)); return }
-    String door = device.currentValue("door")
+    String door = lastValue("door")
     if (door in ["opening", "closing"]) stop()       // as the opener's own button does
     else if (door == "closed") open()
     else close()
 }
 
 /** PushableButton: records a press in Hubitat only. It never moves the door (use Toggle for that). */
-void push(def n = 1) { pushed(n as int, "digital") }
+void push(def n = 1) { pushed((n ?: 1) as int, "digital") }
 
 private void pushed(int n, String type) {
     if (txtEnable) log.info "${device.displayName} button ${n} was pushed (${type})"
@@ -180,7 +180,7 @@ void lightOff() { lightState(false) }
 void lockRemotes() { lockCommand(1) }
 void unlockRemotes() { lockCommand(0) }
 
-/** Reboot the ratgdo with its own Restart button; the driver reconnects when it's back (about 10 s). */
+/** Reboot the ratgdo with its own Restart button; the driver reconnects after RESTART_SECS (15 s). */
 void restart() {
     Integer k = keyFor("restartButton")
     if (k == null) return
@@ -221,10 +221,10 @@ private void lockCommand(int cmd) {
     if (k != null) sendApi(LOCK_CMD, cat(pbFixed32(1, k), pbVarint(2, cmd)))
 }
 
-private Integer keyFor(String role) {
+private Integer keyFor(String role, boolean warn = true) {
     Map m = MEM[device.idAsLong]
     Integer k = (Integer) m?.roles?.get(role)
-    if (k == null) log.warn "${device.displayName}: not connected, or the ratgdo has no ${role}"
+    if (k == null && warn) log.warn "${device.displayName}: not connected, or the ratgdo has no ${role}"
     return k
 }
 
@@ -256,8 +256,8 @@ void connectNow() {
     }
     m.hs = noiseStart(psk, randomBytes(32))
     byte[] msg1 = (byte[]) m.hs.msg1
+    runIn(HANDSHAKE_SECS, "handshakeTimeout")   // armed first: a send that throws must still time out
     rawSend(cat([1, 0, 0] as byte[], frame([0] as byte[], msg1)))
-    runIn(HANDSHAKE_SECS, "handshakeTimeout")
 }
 
 void handshakeTimeout() {
@@ -266,8 +266,9 @@ void handshakeTimeout() {
 
 void watchdog() {
     Map m = MEM[device.idAsLong]
-    // Saving new driver code clears MEM but may leave the socket open: start over.
-    if (m == null && device.currentValue("networkStatus") in ["online", "connecting"]) { connectNow(); return }
+    // Saving new driver code clears MEM but may leave the socket open: start over. Only "online" is
+    // stale: "connecting" always has a handshake timeout or a scheduled connectNow (Restart's 15 s wait).
+    if (m == null && lastValue("networkStatus") == "online") { connectNow(); return }
     if (m?.phase != "ready") return
     long quiet = now() - (long) m.lastRx
     if (quiet > DEAD_AFTER_MS) reconnectLater("No reply from the ratgdo for ${quiet.intdiv(1000)} s")
@@ -356,14 +357,16 @@ void parse(String hex) {
 private boolean onFrame(Map m, byte[] f) {
     switch (m.phase) {
         case "hello":
-            if (f.length == 0 || f[0] != 1) {
-                // Most likely left over from the previous connection; the handshake timeout covers a real fault.
+            // ESPHome's server hello is [1] alone (old firmware) or [1] name\0 mac\0. Anything else is most
+            // likely left over from the previous connection (ciphertext can start with 1 too); the
+            // handshake timeout covers a real fault.
+            if (f.length == 0 || f[0] != 1 || (f.length > 1 && f[f.length - 1] != 0)) {
                 logDebug "ignored a ${f.length}-byte frame while waiting for the ratgdo's hello"
                 return true
             }
             int end = 1
             while (end < f.length && f[end] != 0) end++
-            m.name = new String(f, 1, end - 1, "UTF-8")
+            m.name = end < f.length ? new String(f, 1, end - 1, "UTF-8") : null
             String pinned = device.getDataValue("esphomeName")
             if (pinned && m.name && m.name != pinned) {
                 badKey("A different ESPHome device ('${m.name}') answers at ${host}, not '${pinned}'. Fix the IP address, then Save", "offline")
@@ -507,7 +510,7 @@ private void onState(Map m, Map f) {
             if (f[2]) {
                 emit("motion", "active")
                 if (hold > 0) runIn(hold, "motionClear")   // each pulse pushes the end back
-            } else if (hold == 0 || device.currentValue("motion") == null) {   // or the first state after connecting
+            } else if (hold == 0 || lastValue("motion") == null) {   // or the first state after connecting
                 emit("motion", "inactive")
             }
             break

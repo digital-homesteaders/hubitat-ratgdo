@@ -700,6 +700,8 @@ check("the wall button: each press is a pushed event, the release is not; push()
     int sent = w.rat.received.size()
     w.dev.push(1); w.pump()
     assert w.dev.events.findAll { it.name == "pushed" }.last().type == "digital" && w.rat.received.size() == sent
+    w.dev.push(null); w.hub.settle()                // the device page's Push with an empty field
+    assert w.dev.events.findAll { it.name == "pushed" }.size() == 4
 }
 
 check("restart: the ratgdo's Restart button; its goodbye is expected, so no warning or backoff, and a reconnect in 15 s") {
@@ -710,6 +712,10 @@ check("restart: the ratgdo's Restart button; its goodbye is expected, so no warn
     assert w.dev.current.networkStatus == "connecting" && w.dev.current.lastError == "Restarting"
     assert w.dev.current.healthStatus == "online" && !w.dev.driver.log.at("warn")
     assert w.dev.driver.callsNamed("runIn").last()[1..2] == [15, "connectNow"] && w.dev.driver.state.retry == 0
+    int connects = w.dev.driver.callsNamed("socket.connect").size()
+    w.dev.watchdog(); w.hub.settle()                // a tick inside the 15 s must not jump the gun
+    assert w.dev.driver.callsNamed("socket.connect").size() == connects && !w.dev.driver.log.at("warn")
+    assert w.dev.current.networkStatus == "connecting"
     w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities)
     w.dev.connectNow(); w.hub.settle(); w.pump()
     assert w.dev.current.networkStatus == "online"
@@ -772,6 +778,19 @@ check("review: a barely-open door logs 1%, not 0%") {
     World w = connected(root, KEY)
     w.push(22, w.d.concat(w.d.pbFixed32(1, DOOR), w.d.pbFloat(3, 0.004f)))
     assert w.dev.driver.log.at("info").last() == "Nexus Gate door is open (1%)"
+}
+
+check("review: a leftover frame that happens to start with 0x01 but has no name terminator is not read as a server hello") {
+    World w = connected(root, KEY)
+    assert w.dev.data.esphomeName == "nexus-gate"
+    w.d.MEM.clear()
+    w.rat = new FakeRatgdo(d: w.d, psk: KEY.decodeBase64(), entities: w.rat.entities)
+    w.dev.connectNow(); w.hub.settle()
+    byte[] stale = w.rat.frame([1, 0x62, 0x74, 0x2d, 0x70] as byte[])   // ciphertext that starts "\x01bt-p", no NUL
+    w.deliver(stale); w.hub.settle()
+    assert w.dev.current.networkStatus == "connecting", "not mistaken for a different device"
+    w.pump()
+    assert w.dev.current.networkStatus == "online" && !w.dev.driver.log.at("error")
 }
 
 check("seen on the C-8 at 03:27: after a fresh start, a frame left over from the old connection is ignored, not fatal") {
